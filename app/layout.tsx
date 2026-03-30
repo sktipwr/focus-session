@@ -2,8 +2,8 @@ import type { Metadata, Viewport } from "next";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "Focus Session",
-  description: "Personal focus timer for daily sessions",
+  title: "Non-Negotiables",
+  description: "Your daily non-negotiable tasks — no excuses",
   manifest: "/manifest.json",
   appleWebApp: {
     capable: true,

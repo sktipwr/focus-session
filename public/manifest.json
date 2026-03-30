@@ -1,7 +1,7 @@
 {
-  "name": "Focus Session",
-  "short_name": "Focus",
-  "description": "Personal focus timer for daily sessions",
+  "name": "Non-Negotiables",
+  "short_name": "NN",
+  "description": "Your daily non-negotiable tasks — no excuses",
   "start_url": "/",
   "display": "standalone",
   "background_color": "#0a0a0a",
