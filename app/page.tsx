@@ -422,11 +422,12 @@ export default function Home() {
         <img
           src="/gonchu.webp"
           alt="Ghochu"
-          className="w-48 h-48 object-contain mb-6 animate-bounce"
+          className="w-44 h-44 object-contain mb-4 animate-bounce"
           style={{ animationDuration: "2s" }}
         />
+        <img src="/emoji/sticker_2.png" alt="" className="w-14 h-14 mb-4" />
         <h1 className="text-3xl font-bold mb-2">
-          Hey Gonchuuu <span className="inline-block animate-pulse">&#128075;</span>
+          Hey Gonchuuu
         </h1>
         <p className="text-[#6b7394] text-sm mb-8">Ready to crush your non-negotiables?</p>
         <p className="text-[#4a5278] text-xs animate-pulse">tap anywhere to start</p>
@@ -453,7 +454,7 @@ export default function Home() {
 
         {streak > 0 && (
           <div className="text-center mb-6 p-4 rounded-xl bg-[#111520] border border-[#1e2538]">
-            <div className="text-3xl mb-1">&#128293;</div>
+            <img src="/emoji/sticker_17.png" alt="Soldier" className="w-14 h-14 mb-1 mx-auto" />
             <div className="text-lg font-bold">{streak} day streak</div>
             <div className="text-[#6b7394] text-sm">Keep it going!</div>
           </div>
@@ -615,10 +616,16 @@ export default function Home() {
     return (
       <div className="max-w-md mx-auto px-4 py-8 flex flex-col items-center justify-center min-h-screen">
         {/* DND Reminder */}
-        <div className="mb-6 px-4 py-2 rounded-lg bg-[#1a1a0a] border border-[#332200] text-center">
+        <div className="mb-4 px-4 py-2 rounded-lg bg-[#1a1a0a] border border-[#332200] text-center">
           <p className="text-[#f59e0b] text-xs font-medium">&#128244; Turn on Do Not Disturb for zero distractions</p>
         </div>
 
+        {/* Contextual emoji */}
+        <img
+          src={overtime ? "/emoji/sticker_30.png" : running ? "/emoji/sticker_14.png" : "/emoji/sticker_1.png"}
+          alt=""
+          className="w-12 h-12 mb-2"
+        />
         <div className="text-center mb-2"><span className="text-4xl">{activeTask.emoji}</span></div>
         <h2 className="text-xl font-semibold mb-1">{activeTask.label}</h2>
         <p className="text-[#6b7394] text-sm mb-8">Session {activeIdx + 1} of {tasks.length}</p>
@@ -670,7 +677,7 @@ export default function Home() {
   if (view === "success" && activeTask) {
     return (
       <div className="max-w-md mx-auto px-4 py-8 flex flex-col items-center justify-center min-h-screen text-center">
-        <img src="/gonchu.webp" alt="Ghochu" className="w-28 h-28 object-contain mb-2" />
+        <img src="/emoji/sticker_3.png" alt="Crushed it" className="w-20 h-20 mb-2" />
         <h2 className="text-2xl font-bold mb-2">Nice work, Gonchuuu!</h2>
         <p className="text-[#5c7cfa] text-sm mb-3 italic max-w-xs">{getSuccessMessage()}</p>
         <p className="text-[#6b7394] mb-1">
@@ -694,7 +701,8 @@ export default function Home() {
   if (view === "allDone") {
     return (
       <div className="max-w-md mx-auto px-4 py-8 flex flex-col items-center justify-center min-h-screen text-center">
-        <img src="/gonchu.webp" alt="Ghochu" className="w-32 h-32 object-contain mb-4" />
+        <img src="/emoji/sticker_28.png" alt="Beast mode" className="w-20 h-20 mb-2" />
+        <img src="/gonchu.webp" alt="Ghochu" className="w-28 h-28 object-contain mb-2" />
         <h2 className="text-2xl font-bold mb-2">All Done, Gonchuuu!</h2>
         <p className="text-[#6b7394] mb-6">
           You focused for <span className="text-[#d4dae8] font-medium">{Math.round(totalMinutes)} minutes</span> today
