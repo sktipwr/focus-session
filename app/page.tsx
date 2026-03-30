@@ -165,13 +165,13 @@ function TimerRing({ progress, size = 220, stroke = 8 }: { progress: number; siz
   const offset = circumference * (1 - progress);
   return (
     <svg width={size} height={size} className="transform -rotate-90">
-      <circle cx={size / 2} cy={size / 2} r={radius} fill="none" stroke="#222" strokeWidth={stroke} />
+      <circle cx={size / 2} cy={size / 2} r={radius} fill="none" stroke="#1e2538" strokeWidth={stroke} />
       <circle
         cx={size / 2}
         cy={size / 2}
         r={radius}
         fill="none"
-        stroke="#3b82f6"
+        stroke="#5c7cfa"
         strokeWidth={stroke}
         strokeDasharray={circumference}
         strokeDashoffset={offset}
@@ -219,6 +219,7 @@ export default function Home() {
   const [view, setView] = useState<View>("list");
   const [activeIdx, setActiveIdx] = useState<number>(-1);
   const [running, setRunning] = useState(false);
+  const [overtime, setOvertime] = useState(false);
   const [mounted, setMounted] = useState(false);
   const [installPrompt, setInstallPrompt] = useState<Event | null>(null);
   const [showInstalled, setShowInstalled] = useState(false);
@@ -261,14 +262,9 @@ export default function Home() {
           const next = [...prev];
           const task = { ...next[activeIdx] };
           task.elapsed += 1;
-          if (task.elapsed >= task.duration) {
-            task.status = "done";
-            task.elapsed = task.duration;
-            task.completedCount += 1;
-            next[activeIdx] = task;
-            setRunning(false);
-            setView("success");
-            return next;
+          if (task.elapsed >= task.duration && !overtime) {
+            // Enter overtime — don't stop, just flip the flag
+            setOvertime(true);
           }
           next[activeIdx] = task;
           return next;
@@ -288,6 +284,7 @@ export default function Home() {
     });
     setActiveIdx(idx);
     setRunning(true);
+    setOvertime(false);
     setView("timer");
   }, [updateTasks]);
 
@@ -308,20 +305,21 @@ export default function Home() {
       return next;
     });
     setRunning(false);
+    setOvertime(false);
     setView("list");
   }, [activeIdx, updateTasks]);
 
-  const markDoneEarly = useCallback(() => {
+  const finishTask = useCallback(() => {
     updateTasks((prev) => {
       const next = [...prev];
       const task = { ...next[activeIdx] };
       task.status = "done";
-      task.elapsed = task.duration;
       task.completedCount += 1;
       next[activeIdx] = task;
       return next;
     });
     setRunning(false);
+    setOvertime(false);
     setView("success");
   }, [activeIdx, updateTasks]);
 
@@ -338,6 +336,7 @@ export default function Home() {
     setView("list");
     setActiveIdx(-1);
     setRunning(false);
+    setOvertime(false);
   }, []);
 
   const handleInstall = async () => {
@@ -352,7 +351,7 @@ export default function Home() {
   if (!mounted) {
     return (
       <div className="flex items-center justify-center min-h-screen">
-        <div className="text-[#737373]">Loading...</div>
+        <div className="text-[#6b7394]">Loading...</div>
       </div>
     );
   }
@@ -369,38 +368,38 @@ export default function Home() {
     return (
       <div className="max-w-md mx-auto px-4 py-8 min-h-screen">
         <div className="flex items-center justify-between mb-6">
-          <button onClick={() => setView("list")} className="text-[#3b82f6] text-sm">&larr; Back</button>
+          <button onClick={() => setView("list")} className="text-[#5c7cfa] text-sm">&larr; Back</button>
           <h1 className="text-lg font-bold">Daily Progress</h1>
           <div className="w-12" />
         </div>
 
         {streak > 0 && (
-          <div className="text-center mb-6 p-4 rounded-xl bg-[#141414] border border-[#222]">
+          <div className="text-center mb-6 p-4 rounded-xl bg-[#111520] border border-[#1e2538]">
             <div className="text-3xl mb-1">&#128293;</div>
             <div className="text-lg font-bold">{streak} day streak</div>
-            <div className="text-[#737373] text-sm">Keep it going!</div>
+            <div className="text-[#6b7394] text-sm">Keep it going!</div>
           </div>
         )}
 
         {history.length === 0 ? (
-          <div className="text-center text-[#737373] mt-12">
+          <div className="text-center text-[#6b7394] mt-12">
             <p className="text-lg mb-2">No history yet</p>
             <p className="text-sm">Complete your first day to see progress here</p>
           </div>
         ) : (
           <div className="space-y-3">
             {history.map((day) => (
-              <div key={day.date} className="p-4 rounded-xl bg-[#141414] border border-[#222]">
+              <div key={day.date} className="p-4 rounded-xl bg-[#111520] border border-[#1e2538]">
                 <div className="flex items-center justify-between mb-2">
                   <span className="font-medium text-sm">{formatDate(day.date)}</span>
-                  <span className="text-[#22c55e] text-sm">
+                  <span className="text-[#51cf66] text-sm">
                     {day.completedCount}/{day.totalCount}
                   </span>
                 </div>
                 {/* Mini progress bar */}
-                <div className="w-full h-1 bg-[#222] rounded-full overflow-hidden mb-2">
+                <div className="w-full h-1 bg-[#1e2538] rounded-full overflow-hidden mb-2">
                   <div
-                    className="h-full bg-[#22c55e] rounded-full"
+                    className="h-full bg-[#51cf66] rounded-full"
                     style={{ width: `${(day.completedCount / day.totalCount) * 100}%` }}
                   />
                 </div>
@@ -410,14 +409,14 @@ export default function Home() {
                       key={t.id}
                       title={t.label}
                       className={`text-xs px-2 py-0.5 rounded-full ${
-                        t.status === "done" ? "bg-[#0a1a0a] text-[#22c55e]" : "bg-[#1a1a1a] text-[#555]"
+                        t.status === "done" ? "bg-[#0d1a12] text-[#51cf66]" : "bg-[#1a1a1a] text-[#4a5278]"
                       }`}
                     >
                       {t.emoji} {t.completedCount > 1 ? `${t.completedCount}x` : ""}
                     </span>
                   ))}
                 </div>
-                <div className="text-[#737373] text-xs mt-2">{Math.round(day.totalMinutes)} min focused</div>
+                <div className="text-[#6b7394] text-xs mt-2">{Math.round(day.totalMinutes)} min focused</div>
               </div>
             ))}
           </div>
@@ -434,8 +433,8 @@ export default function Home() {
       <div className="max-w-md mx-auto px-4 py-8 min-h-screen flex flex-col">
         <div className="text-center mb-6">
           <h1 className="text-2xl font-bold tracking-tight">Non-Negotiables</h1>
-          <p className="text-[#737373] text-sm mt-1">{formatDateLong(dayData.date)}</p>
-          <p className="text-[#737373] text-xs mt-0.5">
+          <p className="text-[#6b7394] text-sm mt-1">{formatDateLong(dayData.date)}</p>
+          <p className="text-[#6b7394] text-xs mt-0.5">
             {completedCount}/{tasks.length} completed
             {streak > 0 && <span className="ml-2">&#128293; {streak} day streak</span>}
           </p>
@@ -443,13 +442,13 @@ export default function Home() {
 
         {/* Motivational quote */}
         <div className="text-center mb-6 px-4">
-          <p className="text-[#555] text-sm italic">&ldquo;{motivation.text}&rdquo;</p>
-          {motivation.author && <p className="text-[#444] text-xs mt-1">&mdash; {motivation.author}</p>}
+          <p className="text-[#4a5278] text-sm italic">&ldquo;{motivation.text}&rdquo;</p>
+          {motivation.author && <p className="text-[#3d4566] text-xs mt-1">&mdash; {motivation.author}</p>}
         </div>
 
-        <div className="w-full h-1.5 bg-[#222] rounded-full mb-6 overflow-hidden">
+        <div className="w-full h-1.5 bg-[#1e2538] rounded-full mb-6 overflow-hidden">
           <div
-            className="h-full bg-[#3b82f6] rounded-full transition-all duration-500"
+            className="h-full bg-[#5c7cfa] rounded-full transition-all duration-500"
             style={{ width: `${(completedCount / tasks.length) * 100}%` }}
           />
         </div>
@@ -460,36 +459,36 @@ export default function Home() {
               key={task.id}
               className={`w-full flex items-center gap-4 p-4 rounded-xl border transition-all ${
                 task.status === "done"
-                  ? "bg-[#0a1a0a] border-[#1a3a1a]"
+                  ? "bg-[#0d1a12] border-[#1a3520]"
                   : task.status === "skipped"
-                  ? "bg-[#141414] border-[#222] opacity-40"
+                  ? "bg-[#111520] border-[#1e2538] opacity-40"
                   : task.status === "active"
-                  ? "bg-[#1a1a2e] border-[#3b82f6]"
-                  : "bg-[#141414] border-[#222]"
+                  ? "bg-[#141830] border-[#5c7cfa]"
+                  : "bg-[#111520] border-[#1e2538]"
               }`}
             >
               <span className="text-2xl">{task.emoji}</span>
               <div className="flex-1 text-left">
-                <div className={`font-medium ${task.status === "done" && !task.repeatable ? "line-through text-[#737373]" : ""}`}>
+                <div className={`font-medium ${task.status === "done" && !task.repeatable ? "line-through text-[#6b7394]" : ""}`}>
                   {task.label}
                 </div>
-                <div className="text-sm text-[#737373]">
+                <div className="text-sm text-[#6b7394]">
                   {task.duration / 60} min
                   {task.completedCount > 0 && (
-                    <span className="ml-2 text-[#22c55e]">&#10003; {task.completedCount}x</span>
+                    <span className="ml-2 text-[#51cf66]">&#10003; {task.completedCount}x</span>
                   )}
                 </div>
               </div>
               {task.status === "done" && task.repeatable ? (
-                <button onClick={() => repeatTask(idx)} className="text-[#3b82f6] text-sm font-medium hover:text-[#60a5fa] transition-colors">
+                <button onClick={() => repeatTask(idx)} className="text-[#5c7cfa] text-sm font-medium hover:text-[#748ffc] transition-colors">
                   Again &rarr;
                 </button>
               ) : task.status === "done" ? (
-                <span className="text-[#22c55e] text-lg">&#10003;</span>
+                <span className="text-[#51cf66] text-lg">&#10003;</span>
               ) : task.status === "skipped" ? (
-                <span className="text-[#737373] text-sm">skipped</span>
+                <span className="text-[#6b7394] text-sm">skipped</span>
               ) : (
-                <button onClick={() => startTask(idx)} className="text-[#3b82f6] text-sm font-medium hover:text-[#60a5fa] transition-colors">
+                <button onClick={() => startTask(idx)} className="text-[#5c7cfa] text-sm font-medium hover:text-[#748ffc] transition-colors">
                   Start &rarr;
                 </button>
               )}
@@ -497,11 +496,11 @@ export default function Home() {
           ))}
         </div>
 
-        <div className="mt-6 space-y-3 pt-4 border-t border-[#222]">
+        <div className="mt-6 space-y-3 pt-4 border-t border-[#1e2538]">
           {/* History button */}
           <button
             onClick={() => setView("history")}
-            className="w-full flex items-center justify-center gap-2 py-2.5 rounded-lg border border-[#222] text-sm text-[#737373] hover:text-[#e5e5e5] hover:border-[#3b82f6] transition-all"
+            className="w-full flex items-center justify-center gap-2 py-2.5 rounded-lg border border-[#1e2538] text-sm text-[#6b7394] hover:text-[#d4dae8] hover:border-[#5c7cfa] transition-all"
           >
             <svg width="16" height="16" viewBox="0 0 16 16" fill="none" className="opacity-60">
               <path d="M8 4v4l3 2M14 8a6 6 0 11-12 0 6 6 0 0112 0z" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
@@ -510,7 +509,7 @@ export default function Home() {
           </button>
 
           {completedCount > 0 && (
-            <button onClick={resetAll} className="w-full text-sm text-[#737373] hover:text-[#e5e5e5] transition-colors py-2">
+            <button onClick={resetAll} className="w-full text-sm text-[#6b7394] hover:text-[#d4dae8] transition-colors py-2">
               Reset all sessions
             </button>
           )}
@@ -518,7 +517,7 @@ export default function Home() {
           {installPrompt && !showInstalled && (
             <button
               onClick={handleInstall}
-              className="w-full flex items-center justify-center gap-2 py-2.5 rounded-lg border border-[#222] text-sm text-[#737373] hover:text-[#e5e5e5] hover:border-[#3b82f6] transition-all"
+              className="w-full flex items-center justify-center gap-2 py-2.5 rounded-lg border border-[#1e2538] text-sm text-[#6b7394] hover:text-[#d4dae8] hover:border-[#5c7cfa] transition-all"
             >
               <svg width="16" height="16" viewBox="0 0 16 16" fill="none" className="opacity-60">
                 <path d="M8 1v9m0 0L5 7m3 3l3-3M3 13h10" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
@@ -526,7 +525,7 @@ export default function Home() {
               Install App
             </button>
           )}
-          {showInstalled && <p className="text-center text-xs text-[#737373]">&#10003; App installed</p>}
+          {showInstalled && <p className="text-center text-xs text-[#6b7394]">&#10003; App installed</p>}
         </div>
       </div>
     );
@@ -544,24 +543,47 @@ export default function Home() {
 
         <div className="text-center mb-2"><span className="text-4xl">{activeTask.emoji}</span></div>
         <h2 className="text-xl font-semibold mb-1">{activeTask.label}</h2>
-        <p className="text-[#737373] text-sm mb-8">Session {activeIdx + 1} of {tasks.length}</p>
+        <p className="text-[#6b7394] text-sm mb-8">Session {activeIdx + 1} of {tasks.length}</p>
         <div className="relative mb-8">
-          <TimerRing progress={progress} />
+          <TimerRing progress={overtime ? 1 : progress} />
           <div className="absolute inset-0 flex flex-col items-center justify-center">
-            <span className="text-4xl font-mono font-bold tracking-wider">{formatTime(remaining)}</span>
-            <span className="text-[#737373] text-xs mt-1">{running ? "focusing" : "paused"}</span>
+            {overtime ? (
+              <>
+                <span className="text-xs text-[#51cf66] font-medium mb-1">OVERTIME</span>
+                <span className="text-4xl font-mono font-bold tracking-wider text-[#51cf66]">
+                  +{formatTime(activeTask.elapsed - activeTask.duration)}
+                </span>
+                <span className="text-[#6b7394] text-xs mt-1">keep going or finish</span>
+              </>
+            ) : (
+              <>
+                <span className="text-4xl font-mono font-bold tracking-wider">{formatTime(remaining)}</span>
+                <span className="text-[#6b7394] text-xs mt-1">{running ? "focusing" : "paused"}</span>
+              </>
+            )}
           </div>
         </div>
+
+        {overtime && (
+          <div className="text-center mb-4">
+            <p className="text-[#51cf66] text-sm font-medium">Time&apos;s up! You&apos;re in the zone — keep going or wrap up.</p>
+          </div>
+        )}
+
         <div className="flex gap-3">
-          <button onClick={skipTask} className="px-5 py-2.5 rounded-lg border border-[#333] text-[#737373] hover:text-[#e5e5e5] hover:border-[#555] transition-all text-sm">Skip</button>
-          <button onClick={pauseResume} className={`px-8 py-2.5 rounded-lg font-medium text-sm transition-all ${running ? "bg-[#1e293b] text-[#3b82f6] hover:bg-[#1e3a5f]" : "bg-[#3b82f6] text-white hover:bg-[#2563eb]"}`}>
+          {!overtime && (
+            <button onClick={skipTask} className="px-5 py-2.5 rounded-lg border border-[#2a3352] text-[#6b7394] hover:text-[#d4dae8] hover:border-[#4a5278] transition-all text-sm">Skip</button>
+          )}
+          <button onClick={pauseResume} className={`px-8 py-2.5 rounded-lg font-medium text-sm transition-all ${running ? "bg-[#1a2240] text-[#5c7cfa] hover:bg-[#1a2d55]" : "bg-[#5c7cfa] text-white hover:bg-[#4263eb]"}`}>
             {running ? "Pause" : "Resume"}
           </button>
-          <button onClick={markDoneEarly} className="px-5 py-2.5 rounded-lg border border-[#1a3a1a] text-[#22c55e] hover:bg-[#0a1a0a] transition-all text-sm">Done</button>
+          <button onClick={finishTask} className={`px-5 py-2.5 rounded-lg font-medium text-sm transition-all ${overtime ? "bg-[#51cf66] text-[#090b10] hover:bg-[#40c057]" : "border border-[#1a3520] text-[#51cf66] hover:bg-[#0d1a12]"}`}>
+            {overtime ? "Finish" : "Done"}
+          </button>
         </div>
 
         {/* Timer motivation */}
-        <p className="mt-8 text-[#555] text-sm italic text-center max-w-xs">{timerMotivation}</p>
+        <p className="mt-8 text-[#4a5278] text-sm italic text-center max-w-xs">{timerMotivation}</p>
       </div>
     );
   }
@@ -572,18 +594,18 @@ export default function Home() {
       <div className="max-w-md mx-auto px-4 py-8 flex flex-col items-center justify-center min-h-screen text-center">
         <div className="text-6xl mb-4">&#127881;</div>
         <h2 className="text-2xl font-bold mb-2">Nice work!</h2>
-        <p className="text-[#3b82f6] text-sm mb-3 italic max-w-xs">{getSuccessMessage()}</p>
-        <p className="text-[#737373] mb-1">
-          You completed <span className="text-[#e5e5e5] font-medium">{activeTask.label}</span>
+        <p className="text-[#5c7cfa] text-sm mb-3 italic max-w-xs">{getSuccessMessage()}</p>
+        <p className="text-[#6b7394] mb-1">
+          You completed <span className="text-[#d4dae8] font-medium">{activeTask.label}</span>
         </p>
-        {activeTask.completedCount > 1 && <p className="text-[#3b82f6] text-sm mb-1">{activeTask.completedCount} times today</p>}
-        <p className="text-[#737373] text-sm mb-8">{completedCount} of {tasks.length} sessions done</p>
+        {activeTask.completedCount > 1 && <p className="text-[#5c7cfa] text-sm mb-1">{activeTask.completedCount} times today</p>}
+        <p className="text-[#6b7394] text-sm mb-8">{completedCount} of {tasks.length} sessions done</p>
         <div className="flex gap-2 mb-8">
           {tasks.map((t) => (
-            <div key={t.id} className={`w-3 h-3 rounded-full transition-all ${t.status === "done" ? "bg-[#22c55e]" : t.status === "skipped" ? "bg-[#333]" : "bg-[#222]"}`} />
+            <div key={t.id} className={`w-3 h-3 rounded-full transition-all ${t.status === "done" ? "bg-[#51cf66]" : t.status === "skipped" ? "bg-[#2a3352]" : "bg-[#1e2538]"}`} />
           ))}
         </div>
-        <button onClick={continueAfterSuccess} className="px-8 py-3 bg-[#3b82f6] text-white rounded-lg font-medium hover:bg-[#2563eb] transition-all">
+        <button onClick={continueAfterSuccess} className="px-8 py-3 bg-[#5c7cfa] text-white rounded-lg font-medium hover:bg-[#4263eb] transition-all">
           {tasks.every((t) => t.status === "done" || t.status === "skipped") ? "See Summary" : "Next Session \u2192"}
         </button>
       </div>
@@ -596,27 +618,27 @@ export default function Home() {
       <div className="max-w-md mx-auto px-4 py-8 flex flex-col items-center justify-center min-h-screen text-center">
         <div className="text-6xl mb-4">&#9989;</div>
         <h2 className="text-2xl font-bold mb-2">All Done for Today!</h2>
-        <p className="text-[#737373] mb-6">
-          You focused for <span className="text-[#e5e5e5] font-medium">{Math.round(totalMinutes)} minutes</span> today
+        <p className="text-[#6b7394] mb-6">
+          You focused for <span className="text-[#d4dae8] font-medium">{Math.round(totalMinutes)} minutes</span> today
         </p>
         <div className="w-full space-y-2 mb-8">
           {tasks.map((task) => (
-            <div key={task.id} className="flex items-center gap-3 p-3 rounded-lg bg-[#141414] border border-[#222]">
+            <div key={task.id} className="flex items-center gap-3 p-3 rounded-lg bg-[#111520] border border-[#1e2538]">
               <span className="text-lg">{task.emoji}</span>
               <span className="flex-1 text-left text-sm">{task.label}</span>
               {task.status === "done" ? (
-                <span className="text-[#22c55e] text-sm">&#10003; {task.completedCount > 1 ? `${task.completedCount}x` : `${task.duration / 60}m`}</span>
+                <span className="text-[#51cf66] text-sm">&#10003; {task.completedCount > 1 ? `${task.completedCount}x` : `${task.duration / 60}m`}</span>
               ) : (
-                <span className="text-[#737373] text-sm">skipped</span>
+                <span className="text-[#6b7394] text-sm">skipped</span>
               )}
             </div>
           ))}
         </div>
         <div className="flex gap-3">
-          <button onClick={() => setView("history")} className="px-6 py-3 bg-[#141414] border border-[#222] text-[#e5e5e5] rounded-lg font-medium hover:border-[#3b82f6] transition-all">
+          <button onClick={() => setView("history")} className="px-6 py-3 bg-[#111520] border border-[#1e2538] text-[#d4dae8] rounded-lg font-medium hover:border-[#5c7cfa] transition-all">
             View Progress
           </button>
-          <button onClick={resetAll} className="px-6 py-3 bg-[#141414] border border-[#222] text-[#737373] rounded-lg font-medium hover:border-[#555] transition-all">
+          <button onClick={resetAll} className="px-6 py-3 bg-[#111520] border border-[#1e2538] text-[#6b7394] rounded-lg font-medium hover:border-[#4a5278] transition-all">
             Start Fresh
           </button>
         </div>

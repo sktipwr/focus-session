@@ -1,17 +1,52 @@
 @import "tailwindcss";
 
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;600;700&display=swap');
+
 :root {
-  --bg: #0a0a0a;
-  --card: #141414;
-  --border: #222;
-  --text: #e5e5e5;
-  --muted: #737373;
-  --accent: #3b82f6;
-  --success: #22c55e;
+  --bg: #090b10;
+  --card: #111520;
+  --card-hover: #161c2e;
+  --border: #1e2538;
+  --border-active: #3b5bdb;
+  --text: #d4dae8;
+  --muted: #6b7394;
+  --accent: #5c7cfa;
+  --accent-glow: #4263eb;
+  --success: #51cf66;
+  --success-dim: #0d2818;
+  --warning: #fcc419;
+}
+
+* {
+  -webkit-tap-highlight-color: transparent;
 }
 
 body {
   background: var(--bg);
   color: var(--text);
-  font-family: system-ui, -apple-system, sans-serif;
+  font-family: 'Inter', system-ui, -apple-system, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* Smooth scrolling */
+html {
+  scroll-behavior: smooth;
+}
+
+/* Custom scrollbar */
+::-webkit-scrollbar {
+  width: 4px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: var(--border);
+  border-radius: 2px;
+}
+
+/* Timer font */
+.font-mono {
+  font-family: 'JetBrains Mono', ui-monospace, monospace;
 }
