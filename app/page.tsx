@@ -24,15 +24,28 @@ interface DayRecord {
   totalCount: number;
 }
 
-const TASK_TEMPLATES: Omit<Task, "status" | "elapsed" | "completedCount">[] = [
-  { id: "morning-pages", label: "Morning Pages", emoji: "\u270D\uFE0F", duration: 15 * 60, repeatable: true },
-  { id: "food", label: "Prepare Food", emoji: "\uD83C\uDF73", duration: 15 * 60, repeatable: false },
-  { id: "journal", label: "Write Journal", emoji: "\uD83D\uDCD3", duration: 15 * 60, repeatable: false },
-  { id: "exercise", label: "Exercise", emoji: "\uD83C\uDFCB\uFE0F", duration: 15 * 60, repeatable: false },
-  { id: "study-1", label: "Study Session 1", emoji: "\uD83D\uDCDA", duration: 30 * 60, repeatable: true },
-  { id: "study-2", label: "Study Session 2", emoji: "\uD83D\uDCDA", duration: 30 * 60, repeatable: true },
-  { id: "study-3", label: "Study Session 3", emoji: "\uD83D\uDCDA", duration: 30 * 60, repeatable: true },
-];
+function getDayOfWeek(): number {
+  return new Date().getDay(); // 0=Sun, 6=Sat
+}
+
+function buildTasks(): Omit<Task, "status" | "elapsed" | "completedCount">[] {
+  const base: Omit<Task, "status" | "elapsed" | "completedCount">[] = [
+    { id: "morning-pages", label: "Morning Pages", emoji: "\u270D\uFE0F", duration: 15 * 60, repeatable: true },
+    { id: "food", label: "Prepare Food", emoji: "\uD83C\uDF73", duration: 15 * 60, repeatable: false },
+    { id: "journal", label: "Write Journal", emoji: "\uD83D\uDCD3", duration: 15 * 60, repeatable: false },
+    { id: "exercise", label: "Exercise", emoji: "\uD83C\uDFCB\uFE0F", duration: 15 * 60, repeatable: false },
+    { id: "study-1", label: "Study Session 1", emoji: "\uD83D\uDCDA", duration: 30 * 60, repeatable: true },
+    { id: "study-2", label: "Study Session 2", emoji: "\uD83D\uDCDA", duration: 30 * 60, repeatable: true },
+    { id: "study-3", label: "Study Session 3", emoji: "\uD83D\uDCDA", duration: 30 * 60, repeatable: true },
+  ];
+  // Saturday: add Record a Video task
+  if (getDayOfWeek() === 6) {
+    base.push({ id: "record-video", label: "Record a Video", emoji: "\uD83C\uDFA5", duration: 30 * 60, repeatable: false });
+  }
+  return base;
+}
+
+const TASK_TEMPLATES = buildTasks();
 
 const MOTIVATIONAL_QUOTES = [
   { text: "Discipline is choosing between what you want now and what you want most.", author: "Abraham Lincoln" },
@@ -213,11 +226,11 @@ function getStreak(history: DayRecord[]): number {
   return streak;
 }
 
-type View = "list" | "timer" | "success" | "allDone" | "history";
+type View = "splash" | "list" | "timer" | "success" | "allDone" | "history";
 
 export default function Home() {
   const [dayData, setDayData] = useState<TodayData>({ date: todayKey(), tasks: freshTasks() });
-  const [view, setView] = useState<View>("list");
+  const [view, setView] = useState<View>("splash");
   const [activeIdx, setActiveIdx] = useState<number>(-1);
   const [running, setRunning] = useState(false);
   const [overtime, setOvertime] = useState(false);
@@ -395,6 +408,28 @@ export default function Home() {
     return (
       <div className="flex items-center justify-center min-h-screen">
         <div className="text-[#6b7394]">Loading...</div>
+      </div>
+    );
+  }
+
+  // ── SPLASH SCREEN ──
+  if (view === "splash") {
+    return (
+      <div
+        className="flex flex-col items-center justify-center min-h-screen text-center px-4 cursor-pointer"
+        onClick={() => setView("list")}
+      >
+        <img
+          src="/gonchu.webp"
+          alt="Ghochu"
+          className="w-48 h-48 object-contain mb-6 animate-bounce"
+          style={{ animationDuration: "2s" }}
+        />
+        <h1 className="text-3xl font-bold mb-2">
+          Hey Gonchuuu <span className="inline-block animate-pulse">&#128075;</span>
+        </h1>
+        <p className="text-[#6b7394] text-sm mb-8">Ready to crush your non-negotiables?</p>
+        <p className="text-[#4a5278] text-xs animate-pulse">tap anywhere to start</p>
       </div>
     );
   }
@@ -635,8 +670,8 @@ export default function Home() {
   if (view === "success" && activeTask) {
     return (
       <div className="max-w-md mx-auto px-4 py-8 flex flex-col items-center justify-center min-h-screen text-center">
-        <div className="text-6xl mb-4">&#127881;</div>
-        <h2 className="text-2xl font-bold mb-2">Nice work!</h2>
+        <img src="/gonchu.webp" alt="Ghochu" className="w-28 h-28 object-contain mb-2" />
+        <h2 className="text-2xl font-bold mb-2">Nice work, Gonchuuu!</h2>
         <p className="text-[#5c7cfa] text-sm mb-3 italic max-w-xs">{getSuccessMessage()}</p>
         <p className="text-[#6b7394] mb-1">
           You completed <span className="text-[#d4dae8] font-medium">{activeTask.label}</span>
@@ -659,8 +694,8 @@ export default function Home() {
   if (view === "allDone") {
     return (
       <div className="max-w-md mx-auto px-4 py-8 flex flex-col items-center justify-center min-h-screen text-center">
-        <div className="text-6xl mb-4">&#9989;</div>
-        <h2 className="text-2xl font-bold mb-2">All Done for Today!</h2>
+        <img src="/gonchu.webp" alt="Ghochu" className="w-32 h-32 object-contain mb-4" />
+        <h2 className="text-2xl font-bold mb-2">All Done, Gonchuuu!</h2>
         <p className="text-[#6b7394] mb-6">
           You focused for <span className="text-[#d4dae8] font-medium">{Math.round(totalMinutes)} minutes</span> today
         </p>
