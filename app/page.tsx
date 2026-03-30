@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback, useRef } from "react";
+import { logSession, syncDaySummary } from "@/lib/supabase";
 
 type TaskStatus = "pending" | "active" | "done" | "skipped";
 
@@ -252,7 +253,23 @@ export default function Home() {
   }, []);
 
   useEffect(() => {
-    if (mounted) saveToday(dayData);
+    if (mounted) {
+      saveToday(dayData);
+      // Sync daily summary to Supabase when any task is completed
+      const hasCompleted = dayData.tasks.some((t) => t.status === "done");
+      if (hasCompleted) {
+        syncDaySummary(
+          dayData.date,
+          dayData.tasks.map((t) => ({
+            id: t.id,
+            label: t.label,
+            status: t.status,
+            completedCount: t.completedCount,
+            duration: t.duration,
+          }))
+        );
+      }
+    }
   }, [dayData, mounted]);
 
   useEffect(() => {
@@ -296,6 +313,18 @@ export default function Home() {
     });
   }, [updateTasks]);
 
+  const untickTask = useCallback((idx: number) => {
+    updateTasks((prev) => {
+      const next = [...prev];
+      const task = { ...next[idx] };
+      task.status = "pending";
+      task.elapsed = 0;
+      task.completedCount = Math.max(0, task.completedCount - 1);
+      next[idx] = task;
+      return next;
+    });
+  }, [updateTasks]);
+
   const pauseResume = useCallback(() => setRunning((r) => !r), []);
 
   const skipTask = useCallback(() => {
@@ -310,18 +339,32 @@ export default function Home() {
   }, [activeIdx, updateTasks]);
 
   const finishTask = useCallback(() => {
+    const task = tasks[activeIdx];
+    const wasOvertime = task.elapsed > task.duration;
+
+    // Log to Supabase
+    logSession({
+      task_id: task.id,
+      task_label: task.label,
+      duration_planned: task.duration,
+      duration_actual: task.elapsed,
+      completed_at: new Date().toISOString(),
+      date: dayData.date,
+      was_overtime: wasOvertime,
+    });
+
     updateTasks((prev) => {
       const next = [...prev];
-      const task = { ...next[activeIdx] };
-      task.status = "done";
-      task.completedCount += 1;
-      next[activeIdx] = task;
+      const t = { ...next[activeIdx] };
+      t.status = "done";
+      t.completedCount += 1;
+      next[activeIdx] = t;
       return next;
     });
     setRunning(false);
     setOvertime(false);
     setView("success");
-  }, [activeIdx, updateTasks]);
+  }, [activeIdx, tasks, dayData.date, updateTasks]);
 
   const continueAfterSuccess = useCallback(() => {
     if (tasks.some((t) => t.status === "pending")) {
@@ -484,7 +527,7 @@ export default function Home() {
                   Again &rarr;
                 </button>
               ) : task.status === "done" ? (
-                <span className="text-[#51cf66] text-lg">&#10003;</span>
+                <button onClick={() => untickTask(idx)} className="text-[#51cf66] text-lg hover:text-[#6b7394] transition-colors" title="Undo">&#10003;</button>
               ) : task.status === "skipped" ? (
                 <span className="text-[#6b7394] text-sm">skipped</span>
               ) : (
