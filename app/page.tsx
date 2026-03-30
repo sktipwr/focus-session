@@ -223,19 +223,44 @@ function formatDateLong(dateStr: string): string {
   return d.toLocaleDateString("en-US", { weekday: "long", month: "short", day: "numeric" });
 }
 
-function TimerRing({ progress, size = 220, stroke = 8 }: { progress: number; size?: number; stroke?: number }) {
+function TimerRing({ progress, size = 220, stroke = 8, overtime = false }: { progress: number; size?: number; stroke?: number; overtime?: boolean }) {
   const radius = (size - stroke) / 2;
   const circumference = 2 * Math.PI * radius;
   const offset = circumference * (1 - progress);
+  const gradientId = overtime ? "grad-overtime" : "grad-timer";
   return (
     <svg width={size} height={size} className="transform -rotate-90">
+      <defs>
+        <linearGradient id="grad-timer" x1="0%" y1="0%" x2="100%" y2="100%">
+          <stop offset="0%" stopColor="#5c7cfa" />
+          <stop offset="50%" stopColor="#748ffc" />
+          <stop offset="100%" stopColor="#9775fa" />
+        </linearGradient>
+        <linearGradient id="grad-overtime" x1="0%" y1="0%" x2="100%" y2="100%">
+          <stop offset="0%" stopColor="#51cf66" />
+          <stop offset="50%" stopColor="#69db7c" />
+          <stop offset="100%" stopColor="#fcc419" />
+        </linearGradient>
+      </defs>
+      {/* Track ring */}
       <circle cx={size / 2} cy={size / 2} r={radius} fill="none" stroke="#1e2538" strokeWidth={stroke} />
+      {/* Outer glow */}
+      <circle
+        cx={size / 2} cy={size / 2} r={radius} fill="none"
+        stroke={overtime ? "rgba(81,207,102,0.1)" : "rgba(92,124,250,0.1)"}
+        strokeWidth={stroke + 12}
+        strokeDasharray={circumference}
+        strokeDashoffset={offset}
+        strokeLinecap="round"
+        className="transition-all duration-1000 ease-linear"
+      />
+      {/* Main progress ring with gradient */}
       <circle
         cx={size / 2}
         cy={size / 2}
         r={radius}
         fill="none"
-        stroke="#5c7cfa"
+        stroke={`url(#${gradientId})`}
         strokeWidth={stroke}
         strokeDasharray={circumference}
         strokeDashoffset={offset}
@@ -680,7 +705,7 @@ export default function Home() {
         <h2 className="text-xl font-semibold mb-1 animate-fade-up">{activeTask.label}</h2>
         <p className="text-[#6b7394] text-sm mb-8 animate-fade-up" style={{ animationDelay: "0.1s" }}>Session {activeIdx + 1} of {tasks.length}</p>
         <div className={`relative mb-8 ${overtime ? "timer-glow-overtime" : "timer-glow"}`}>
-          <TimerRing progress={overtime ? 1 : progress} />
+          <TimerRing progress={overtime ? 1 : progress} overtime={overtime} />
           <div className="absolute inset-0 flex flex-col items-center justify-center">
             {overtime ? (
               <>
