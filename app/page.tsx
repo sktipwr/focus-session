@@ -1,7 +1,57 @@
 "use client";
 
 import { useState, useEffect, useCallback, useRef } from "react";
+import confetti from "canvas-confetti";
 import { logSession, syncDaySummary } from "@/lib/supabase";
+
+// Sticker categories for contextual random picks
+const STICKERS = {
+  hype: [2, 3, 18, 23, 28], // proud, boxing, excited, smirk, devil
+  focus: [4, 14, 17, 19, 20], // shush, ninja, army, v-sign, pointing
+  lazy: [1, 9, 13, 16, 29], // yawn, frying pan, facepalm, grumpy, wave-bye
+  fire: [3, 15, 26, 28, 30], // boxing, angry, grr, devil, fire-mouth
+  celebrate: [2, 8, 18, 22, 25, 28], // proud, crazy, excited, laughing, tongue, devil
+};
+
+function randomSticker(category: keyof typeof STICKERS): string {
+  const picks = STICKERS[category];
+  const idx = picks[Math.floor(Math.random() * picks.length)];
+  return `/emoji/sticker_${idx}.png`;
+}
+
+function fireConfetti() {
+  const defaults = { startVelocity: 30, spread: 360, ticks: 60, zIndex: 9999 };
+  confetti({ ...defaults, particleCount: 50, origin: { x: 0.2, y: 0.6 } });
+  confetti({ ...defaults, particleCount: 50, origin: { x: 0.8, y: 0.6 } });
+  setTimeout(() => {
+    confetti({ ...defaults, particleCount: 30, origin: { x: 0.5, y: 0.4 } });
+  }, 250);
+}
+
+function fireBigConfetti() {
+  const duration = 2000;
+  const end = Date.now() + duration;
+  const frame = () => {
+    confetti({
+      particleCount: 3,
+      angle: 60,
+      spread: 55,
+      origin: { x: 0 },
+      colors: ["#5c7cfa", "#51cf66", "#fcc419"],
+      zIndex: 9999,
+    });
+    confetti({
+      particleCount: 3,
+      angle: 120,
+      spread: 55,
+      origin: { x: 1 },
+      colors: ["#5c7cfa", "#51cf66", "#fcc419"],
+      zIndex: 9999,
+    });
+    if (Date.now() < end) requestAnimationFrame(frame);
+  };
+  frame();
+}
 
 type TaskStatus = "pending" | "active" | "done" | "skipped";
 
@@ -422,15 +472,14 @@ export default function Home() {
         <img
           src="/gonchu.webp"
           alt="Ghochu"
-          className="w-44 h-44 object-contain mb-4 animate-bounce"
-          style={{ animationDuration: "2s" }}
+          className="w-44 h-44 object-contain mb-4 animate-pop-in animate-float"
         />
-        <img src="/emoji/sticker_2.png" alt="" className="w-14 h-14 mb-4" />
-        <h1 className="text-3xl font-bold mb-2">
+        <img src={randomSticker("hype")} alt="" className="w-14 h-14 mb-4 animate-sticker-drop" style={{ animationDelay: "0.3s" }} />
+        <h1 className="text-3xl font-bold mb-2 animate-fade-up" style={{ animationDelay: "0.4s" }}>
           Hey Gonchuuu
         </h1>
-        <p className="text-[#6b7394] text-sm mb-8">Ready to crush your non-negotiables?</p>
-        <p className="text-[#4a5278] text-xs animate-pulse">tap anywhere to start</p>
+        <p className="text-[#6b7394] text-sm mb-8 animate-fade-up" style={{ animationDelay: "0.6s" }}>Ready to crush your non-negotiables?</p>
+        <p className="text-[#4a5278] text-xs animate-pulse animate-fade-up" style={{ animationDelay: "0.8s" }}>tap anywhere to start</p>
       </div>
     );
   }
@@ -510,7 +559,7 @@ export default function Home() {
   if (view === "list") {
     return (
       <div className="max-w-md mx-auto px-4 py-8 min-h-screen flex flex-col">
-        <div className="text-center mb-6">
+        <div className="text-center mb-6 animate-fade-down">
           <h1 className="text-2xl font-bold tracking-tight">Non-Negotiables</h1>
           <p className="text-[#6b7394] text-sm mt-1">{formatDateLong(dayData.date)}</p>
           <p className="text-[#6b7394] text-xs mt-0.5">
@@ -532,17 +581,17 @@ export default function Home() {
           />
         </div>
 
-        <div className="space-y-3 flex-1">
+        <div className="space-y-3 flex-1 stagger-children">
           {tasks.map((task, idx) => (
             <div
               key={task.id}
-              className={`w-full flex items-center gap-4 p-4 rounded-xl border transition-all ${
+              className={`w-full flex items-center gap-4 p-4 rounded-xl border animate-fade-up card-lift ${
                 task.status === "done"
                   ? "bg-[#0d1a12] border-[#1a3520]"
                   : task.status === "skipped"
                   ? "bg-[#111520] border-[#1e2538] opacity-40"
                   : task.status === "active"
-                  ? "bg-[#141830] border-[#5c7cfa]"
+                  ? "bg-[#141830] border-[#5c7cfa] animate-glow"
                   : "bg-[#111520] border-[#1e2538]"
               }`}
             >
@@ -568,7 +617,7 @@ export default function Home() {
                 <span className="text-[#6b7394] text-sm">skipped</span>
               ) : (
                 <button onClick={() => startTask(idx)} className="text-[#5c7cfa] text-sm font-medium hover:text-[#748ffc] transition-colors">
-                  Start &rarr;
+                  Start &#8594;
                 </button>
               )}
             </div>
@@ -616,20 +665,21 @@ export default function Home() {
     return (
       <div className="max-w-md mx-auto px-4 py-8 flex flex-col items-center justify-center min-h-screen">
         {/* DND Reminder */}
-        <div className="mb-4 px-4 py-2 rounded-lg bg-[#1a1a0a] border border-[#332200] text-center">
+        <div className="mb-4 px-4 py-2 rounded-lg bg-[#1a1a0a] border border-[#332200] text-center animate-fade-down">
           <p className="text-[#f59e0b] text-xs font-medium">&#128244; Turn on Do Not Disturb for zero distractions</p>
         </div>
 
         {/* Contextual emoji */}
         <img
-          src={overtime ? "/emoji/sticker_30.png" : running ? "/emoji/sticker_14.png" : "/emoji/sticker_1.png"}
+          src={overtime ? randomSticker("fire") : running ? randomSticker("focus") : randomSticker("lazy")}
           alt=""
-          className="w-12 h-12 mb-2"
+          className={`w-12 h-12 mb-2 ${overtime ? "animate-wiggle" : "animate-sticker-drop"}`}
+          key={`${running}-${overtime}`}
         />
-        <div className="text-center mb-2"><span className="text-4xl">{activeTask.emoji}</span></div>
-        <h2 className="text-xl font-semibold mb-1">{activeTask.label}</h2>
-        <p className="text-[#6b7394] text-sm mb-8">Session {activeIdx + 1} of {tasks.length}</p>
-        <div className="relative mb-8">
+        <div className="text-center mb-2 animate-scale-in"><span className="text-4xl">{activeTask.emoji}</span></div>
+        <h2 className="text-xl font-semibold mb-1 animate-fade-up">{activeTask.label}</h2>
+        <p className="text-[#6b7394] text-sm mb-8 animate-fade-up" style={{ animationDelay: "0.1s" }}>Session {activeIdx + 1} of {tasks.length}</p>
+        <div className={`relative mb-8 ${overtime ? "timer-glow-overtime" : "timer-glow"}`}>
           <TimerRing progress={overtime ? 1 : progress} />
           <div className="absolute inset-0 flex flex-col items-center justify-center">
             {overtime ? (
@@ -657,7 +707,7 @@ export default function Home() {
 
         <div className="flex gap-3">
           {!overtime && (
-            <button onClick={skipTask} className="px-5 py-2.5 rounded-lg border border-[#2a3352] text-[#6b7394] hover:text-[#d4dae8] hover:border-[#4a5278] transition-all text-sm">Skip</button>
+            <button onClick={skipTask} className="btn-press px-5 py-2.5 rounded-lg border border-[#2a3352] text-[#6b7394] hover:text-[#d4dae8] hover:border-[#4a5278] transition-all text-sm">Skip</button>
           )}
           <button onClick={pauseResume} className={`px-8 py-2.5 rounded-lg font-medium text-sm transition-all ${running ? "bg-[#1a2240] text-[#5c7cfa] hover:bg-[#1a2d55]" : "bg-[#5c7cfa] text-white hover:bg-[#4263eb]"}`}>
             {running ? "Pause" : "Resume"}
@@ -675,22 +725,24 @@ export default function Home() {
 
   // ── SUCCESS VIEW ──
   if (view === "success" && activeTask) {
+    // Fire confetti on mount
+    fireConfetti();
     return (
       <div className="max-w-md mx-auto px-4 py-8 flex flex-col items-center justify-center min-h-screen text-center">
-        <img src="/emoji/sticker_3.png" alt="Crushed it" className="w-20 h-20 mb-2" />
-        <h2 className="text-2xl font-bold mb-2">Nice work, Gonchuuu!</h2>
-        <p className="text-[#5c7cfa] text-sm mb-3 italic max-w-xs">{getSuccessMessage()}</p>
-        <p className="text-[#6b7394] mb-1">
+        <img src={randomSticker("celebrate")} alt="Crushed it" className="w-20 h-20 mb-2 animate-pop-in" />
+        <h2 className="text-2xl font-bold mb-2 animate-fade-up" style={{ animationDelay: "0.2s" }}>Nice work, Gonchuuu!</h2>
+        <p className="text-[#5c7cfa] text-sm mb-3 italic max-w-xs animate-fade-up" style={{ animationDelay: "0.3s" }}>{getSuccessMessage()}</p>
+        <p className="text-[#6b7394] mb-1 animate-fade-up" style={{ animationDelay: "0.4s" }}>
           You completed <span className="text-[#d4dae8] font-medium">{activeTask.label}</span>
         </p>
-        {activeTask.completedCount > 1 && <p className="text-[#5c7cfa] text-sm mb-1">{activeTask.completedCount} times today</p>}
-        <p className="text-[#6b7394] text-sm mb-8">{completedCount} of {tasks.length} sessions done</p>
-        <div className="flex gap-2 mb-8">
+        {activeTask.completedCount > 1 && <p className="text-[#5c7cfa] text-sm mb-1 animate-fade-up">{activeTask.completedCount} times today</p>}
+        <p className="text-[#6b7394] text-sm mb-8 animate-fade-up" style={{ animationDelay: "0.5s" }}>{completedCount} of {tasks.length} sessions done</p>
+        <div className="flex gap-2 mb-8 animate-fade-up" style={{ animationDelay: "0.6s" }}>
           {tasks.map((t) => (
-            <div key={t.id} className={`w-3 h-3 rounded-full transition-all ${t.status === "done" ? "bg-[#51cf66]" : t.status === "skipped" ? "bg-[#2a3352]" : "bg-[#1e2538]"}`} />
+            <div key={t.id} className={`w-3 h-3 rounded-full transition-all ${t.status === "done" ? "bg-[#51cf66] animate-scale-in" : t.status === "skipped" ? "bg-[#2a3352]" : "bg-[#1e2538]"}`} />
           ))}
         </div>
-        <button onClick={continueAfterSuccess} className="px-8 py-3 bg-[#5c7cfa] text-white rounded-lg font-medium hover:bg-[#4263eb] transition-all">
+        <button onClick={continueAfterSuccess} className="btn-press px-8 py-3 bg-[#5c7cfa] text-white rounded-lg font-medium hover:bg-[#4263eb] transition-all animate-fade-up animate-shimmer" style={{ animationDelay: "0.7s" }}>
           {tasks.every((t) => t.status === "done" || t.status === "skipped") ? "See Summary" : "Next Session \u2192"}
         </button>
       </div>
@@ -699,10 +751,11 @@ export default function Home() {
 
   // ── ALL DONE VIEW ──
   if (view === "allDone") {
+    fireBigConfetti();
     return (
       <div className="max-w-md mx-auto px-4 py-8 flex flex-col items-center justify-center min-h-screen text-center">
-        <img src="/emoji/sticker_28.png" alt="Beast mode" className="w-20 h-20 mb-2" />
-        <img src="/gonchu.webp" alt="Ghochu" className="w-28 h-28 object-contain mb-2" />
+        <img src={randomSticker("fire")} alt="Beast mode" className="w-16 h-16 mb-2 animate-pop-in" />
+        <img src="/gonchu.webp" alt="Ghochu" className="w-28 h-28 object-contain mb-2 animate-float" />
         <h2 className="text-2xl font-bold mb-2">All Done, Gonchuuu!</h2>
         <p className="text-[#6b7394] mb-6">
           You focused for <span className="text-[#d4dae8] font-medium">{Math.round(totalMinutes)} minutes</span> today
