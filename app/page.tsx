@@ -41,18 +41,22 @@ const BUILTIN_TASKS: TaskTemplate[] = [
 ];
 
 // ── localStorage ──
-const CK = "nn-custom-tasks", HK = "nn-hidden-tasks", TK = "nn-today", HIS = "nn-history";
+const CK = "nn-custom-tasks", HK = "nn-hidden-tasks", TK = "nn-today", HIS = "nn-history", OK = "nn-overrides";
 function loadC(): TaskTemplate[] { try { return JSON.parse(localStorage.getItem(CK)||"[]"); } catch { return []; } }
 function saveC(t: TaskTemplate[]) { localStorage.setItem(CK, JSON.stringify(t)); }
 function loadH(): string[] { try { return JSON.parse(localStorage.getItem(HK)||"[]"); } catch { return []; } }
 function saveH(ids: string[]) { localStorage.setItem(HK, JSON.stringify(ids)); }
+function loadOverrides(): Record<string, Partial<TaskTemplate>> { try { return JSON.parse(localStorage.getItem(OK)||"{}"); } catch { return {}; } }
+function saveOverrides(o: Record<string, Partial<TaskTemplate>>) { localStorage.setItem(OK, JSON.stringify(o)); }
 
 function buildTemplates(): TaskTemplate[] {
   if (typeof window === "undefined") return BUILTIN_TASKS;
   const hidden = loadH(), custom = loadC();
   const b = BUILTIN_TASKS.filter((t) => !hidden.includes(t.id));
   if (new Date().getDay() === 6 && !hidden.includes("record-video")) b.push({ id: "record-video", label: "Record a Video", emoji: "\uD83C\uDFA5", duration: 30 * 60, repeatable: false });
-  return [...b, ...custom.map((t) => ({ ...t, isCustom: true }))];
+  const overrides = loadOverrides();
+  const withOverrides = b.map((t) => overrides[t.id] ? { ...t, ...overrides[t.id] } : t);
+  return [...withOverrides, ...custom.map((t) => ({ ...t, isCustom: true }))];
 }
 function freshTasks(): Task[] { return buildTemplates().map((t) => ({ ...t, status: "pending" as TaskStatus, elapsed: 0, completedCount: 0 })); }
 function todayKey(): string { return new Date().toISOString().slice(0, 10); }
@@ -184,7 +188,12 @@ export default function Home() {
   const resetAll=useCallback(()=>{setDayData({date:todayKey(),tasks:freshTasks()});setTs("idle");setActiveIdx(-1);},[]);
   const addTask=useCallback((tmpl:TaskTemplate)=>{const c=loadC();c.push(tmpl);saveC(c);uT(p=>[...p,{...tmpl,status:"pending" as TaskStatus,elapsed:0,completedCount:0}]);setShowAdd(false);},[uT]);
   const delTask=useCallback((id:string)=>{if(BUILTIN_TASKS.some(t=>t.id===id)||id==="record-video"){const h=loadH();h.push(id);saveH(h);}else saveC(loadC().filter(t=>t.id!==id));uT(p=>p.filter(t=>t.id!==id));},[uT]);
-  const updTask=useCallback((id:string,u:Partial<TaskTemplate>)=>{if(!BUILTIN_TASKS.some(t=>t.id===id)&&id!=="record-video")saveC(loadC().map(t=>t.id===id?{...t,...u}:t));uT(p=>p.map(t=>t.id===id?{...t,...u}:t));setEditingId(null);},[uT]);
+  const updTask=useCallback((id:string,u:Partial<TaskTemplate>)=>{
+    const isBuiltin = BUILTIN_TASKS.some(t=>t.id===id) || id==="record-video";
+    if (isBuiltin) { const o=loadOverrides(); o[id]={...(o[id]||{}), ...u}; saveOverrides(o); }
+    else saveC(loadC().map(t=>t.id===id?{...t,...u}:t));
+    uT(p=>p.map(t=>t.id===id?{...t,...u}:t)); setEditingId(null);
+  },[uT]);
 
   if(!mounted)return<div className="flex items-center justify-center min-h-screen"><div style={{color:V.muted}}>Loading...</div></div>;
 
@@ -223,7 +232,7 @@ export default function Home() {
             {/* Edit/Delete — always visible, subtle */}
             {editMode && (
               <div className="flex gap-1">
-                {task.isCustom && <button onClick={()=>setEditingId(task.id)} className="p-1.5 rounded-md transition-colors hover:opacity-80" style={{color:V.faint}} title="Edit"><svg width="11" height="11" viewBox="0 0 16 16" fill="none"><path d="M11.5 1.5l3 3L5 14H2v-3L11.5 1.5z" stroke="currentColor" strokeWidth="1.5"/></svg></button>}
+                <button onClick={()=>setEditingId(task.id)} className="p-1.5 rounded-md transition-colors hover:opacity-80" style={{color:V.faint}} title="Edit"><svg width="11" height="11" viewBox="0 0 16 16" fill="none"><path d="M11.5 1.5l3 3L5 14H2v-3L11.5 1.5z" stroke="currentColor" strokeWidth="1.5"/></svg></button>
                 <button onClick={()=>delTask(task.id)} className="p-1.5 rounded-md transition-colors hover:opacity-80" style={{color:"#d44"}} title="Delete"><svg width="11" height="11" viewBox="0 0 16 16" fill="none"><path d="M4 4l8 8M12 4l-8 8" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"/></svg></button>
               </div>
             )}
