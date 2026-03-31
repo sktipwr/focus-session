@@ -4,65 +4,53 @@ import { useState, useEffect, useCallback, useRef } from "react";
 import confetti from "canvas-confetti";
 import { logSession, syncDaySummary } from "@/lib/supabase";
 
-// Sticker categories for contextual random picks
+// ── Sticker system ──
 const STICKERS = {
-  hype: [2, 3, 18, 23, 28], // proud, boxing, excited, smirk, devil
-  focus: [4, 14, 17, 19, 20], // shush, ninja, army, v-sign, pointing
-  lazy: [1, 9, 13, 16, 29], // yawn, frying pan, facepalm, grumpy, wave-bye
-  fire: [3, 15, 26, 28, 30], // boxing, angry, grr, devil, fire-mouth
-  celebrate: [2, 8, 18, 22, 25, 28], // proud, crazy, excited, laughing, tongue, devil
+  hype: [2, 3, 18, 23, 28],
+  focus: [4, 14, 17, 19, 20],
+  lazy: [1, 9, 13, 16, 29],
+  fire: [3, 15, 26, 28, 30],
+  celebrate: [2, 8, 18, 22, 25, 28],
 };
 
 function randomSticker(category: keyof typeof STICKERS): string {
   const picks = STICKERS[category];
-  const idx = picks[Math.floor(Math.random() * picks.length)];
-  return `/emoji/sticker_${idx}.png`;
+  return `/emoji/sticker_${picks[Math.floor(Math.random() * picks.length)]}.png`;
 }
 
 function fireConfetti() {
   const defaults = { startVelocity: 30, spread: 360, ticks: 60, zIndex: 9999 };
   confetti({ ...defaults, particleCount: 50, origin: { x: 0.2, y: 0.6 } });
   confetti({ ...defaults, particleCount: 50, origin: { x: 0.8, y: 0.6 } });
-  setTimeout(() => {
-    confetti({ ...defaults, particleCount: 30, origin: { x: 0.5, y: 0.4 } });
-  }, 250);
+  setTimeout(() => confetti({ ...defaults, particleCount: 30, origin: { x: 0.5, y: 0.4 } }), 250);
 }
 
 function fireBigConfetti() {
-  const duration = 2000;
-  const end = Date.now() + duration;
+  const end = Date.now() + 2000;
+  const colors = ["#7b93ff", "#5dd97a", "#f5a623"];
   const frame = () => {
-    confetti({
-      particleCount: 3,
-      angle: 60,
-      spread: 55,
-      origin: { x: 0 },
-      colors: ["#5c7cfa", "#51cf66", "#fcc419"],
-      zIndex: 9999,
-    });
-    confetti({
-      particleCount: 3,
-      angle: 120,
-      spread: 55,
-      origin: { x: 1 },
-      colors: ["#5c7cfa", "#51cf66", "#fcc419"],
-      zIndex: 9999,
-    });
+    confetti({ particleCount: 3, angle: 60, spread: 55, origin: { x: 0 }, colors, zIndex: 9999 });
+    confetti({ particleCount: 3, angle: 120, spread: 55, origin: { x: 1 }, colors, zIndex: 9999 });
     if (Date.now() < end) requestAnimationFrame(frame);
   };
   frame();
 }
 
+// ── Types ──
 type TaskStatus = "pending" | "active" | "done" | "skipped";
 
-interface Task {
+interface TaskTemplate {
   id: string;
   label: string;
   emoji: string;
   duration: number;
+  repeatable: boolean;
+  isCustom?: boolean;
+}
+
+interface Task extends TaskTemplate {
   status: TaskStatus;
   elapsed: number;
-  repeatable: boolean;
   completedCount: number;
 }
 
@@ -74,30 +62,57 @@ interface DayRecord {
   totalCount: number;
 }
 
-function getDayOfWeek(): number {
-  return new Date().getDay(); // 0=Sun, 6=Sat
+interface TodayData {
+  date: string;
+  tasks: Task[];
 }
 
-function buildTasks(): Omit<Task, "status" | "elapsed" | "completedCount">[] {
-  const base: Omit<Task, "status" | "elapsed" | "completedCount">[] = [
-    { id: "morning-pages", label: "Morning Pages", emoji: "\u270D\uFE0F", duration: 15 * 60, repeatable: true },
-    { id: "food", label: "Prepare Food", emoji: "\uD83C\uDF73", duration: 15 * 60, repeatable: false },
-    { id: "journal", label: "Write Journal", emoji: "\uD83D\uDCD3", duration: 15 * 60, repeatable: false },
-    { id: "exercise", label: "Exercise", emoji: "\uD83C\uDFCB\uFE0F", duration: 15 * 60, repeatable: false },
-    { id: "study-1", label: "Study Session 1", emoji: "\uD83D\uDCDA", duration: 30 * 60, repeatable: true },
-    { id: "study-2", label: "Study Session 2", emoji: "\uD83D\uDCDA", duration: 30 * 60, repeatable: true },
-    { id: "study-3", label: "Study Session 3", emoji: "\uD83D\uDCDA", duration: 30 * 60, repeatable: true },
-  ];
-  // Saturday: add Record a Video task
-  if (getDayOfWeek() === 6) {
-    base.push({ id: "record-video", label: "Record a Video", emoji: "\uD83C\uDFA5", duration: 30 * 60, repeatable: false });
+// ── Built-in task templates ──
+const BUILTIN_TASKS: TaskTemplate[] = [
+  { id: "morning-pages", label: "Morning Pages", emoji: "\u270D\uFE0F", duration: 15 * 60, repeatable: true },
+  { id: "food", label: "Prepare Food", emoji: "\uD83C\uDF73", duration: 15 * 60, repeatable: false },
+  { id: "journal", label: "Write Journal", emoji: "\uD83D\uDCD3", duration: 15 * 60, repeatable: false },
+  { id: "exercise", label: "Exercise", emoji: "\uD83C\uDFCB\uFE0F", duration: 15 * 60, repeatable: false },
+  { id: "study-1", label: "Study Session 1", emoji: "\uD83D\uDCDA", duration: 30 * 60, repeatable: true },
+  { id: "study-2", label: "Study Session 2", emoji: "\uD83D\uDCDA", duration: 30 * 60, repeatable: true },
+  { id: "study-3", label: "Study Session 3", emoji: "\uD83D\uDCDA", duration: 30 * 60, repeatable: true },
+];
+
+// ── Custom task localStorage ──
+const CUSTOM_TASKS_KEY = "nn-custom-tasks";
+const HIDDEN_TASKS_KEY = "nn-hidden-tasks";
+
+function loadCustomTasks(): TaskTemplate[] {
+  try { return JSON.parse(localStorage.getItem(CUSTOM_TASKS_KEY) || "[]"); } catch { return []; }
+}
+function saveCustomTasks(tasks: TaskTemplate[]) {
+  localStorage.setItem(CUSTOM_TASKS_KEY, JSON.stringify(tasks));
+}
+function loadHiddenTasks(): string[] {
+  try { return JSON.parse(localStorage.getItem(HIDDEN_TASKS_KEY) || "[]"); } catch { return []; }
+}
+function saveHiddenTasks(ids: string[]) {
+  localStorage.setItem(HIDDEN_TASKS_KEY, JSON.stringify(ids));
+}
+
+function buildTemplates(): TaskTemplate[] {
+  if (typeof window === "undefined") return BUILTIN_TASKS;
+  const hidden = loadHiddenTasks();
+  const custom = loadCustomTasks();
+  const builtins = BUILTIN_TASKS.filter((t) => !hidden.includes(t.id));
+  // Saturday: add Record a Video
+  if (new Date().getDay() === 6 && !hidden.includes("record-video")) {
+    builtins.push({ id: "record-video", label: "Record a Video", emoji: "\uD83C\uDFA5", duration: 30 * 60, repeatable: false });
   }
-  return base;
+  return [...builtins, ...custom.map((t) => ({ ...t, isCustom: true }))];
 }
 
-const TASK_TEMPLATES = buildTasks();
+function freshTasks(): Task[] {
+  return buildTemplates().map((t) => ({ ...t, status: "pending" as TaskStatus, elapsed: 0, completedCount: 0 }));
+}
 
-const MOTIVATIONAL_QUOTES = [
+// ── Motivation ──
+const QUOTES = [
   { text: "Discipline is choosing between what you want now and what you want most.", author: "Abraham Lincoln" },
   { text: "The secret of getting ahead is getting started.", author: "Mark Twain" },
   { text: "It's not about being the best. It's about being better than you were yesterday.", author: "" },
@@ -112,12 +127,7 @@ const MOTIVATIONAL_QUOTES = [
   { text: "Hard choices, easy life. Easy choices, hard life.", author: "" },
 ];
 
-function getMotivation(): { text: string; author: string } {
-  const idx = Math.floor(Date.now() / 3600000) % MOTIVATIONAL_QUOTES.length;
-  return MOTIVATIONAL_QUOTES[idx];
-}
-
-const SUCCESS_MESSAGES = [
+const SUCCESS_MSGS = [
   "Crushed it! You're building an unstoppable habit.",
   "That's what consistency looks like. Keep going!",
   "One more session done. Future you is grateful.",
@@ -128,11 +138,7 @@ const SUCCESS_MESSAGES = [
   "Your focus muscle just got stronger.",
 ];
 
-function getSuccessMessage(): string {
-  return SUCCESS_MESSAGES[Math.floor(Math.random() * SUCCESS_MESSAGES.length)];
-}
-
-const TIMER_MOTIVATIONS = [
+const TIMER_MSGS = [
   "Stay locked in. Distractions are temporary, results are permanent.",
   "This is your time. Own every second of it.",
   "Deep focus mode. The world can wait.",
@@ -140,21 +146,11 @@ const TIMER_MOTIVATIONS = [
   "Every second of focus compounds into greatness.",
 ];
 
-function freshTasks(): Task[] {
-  return TASK_TEMPLATES.map((t) => ({ ...t, status: "pending" as TaskStatus, elapsed: 0, completedCount: 0 }));
-}
-
-function todayKey(): string {
-  return new Date().toISOString().slice(0, 10);
-}
-
+// ── Persistence ──
 const TODAY_KEY = "nn-today";
 const HISTORY_KEY = "nn-history";
 
-interface TodayData {
-  date: string;
-  tasks: Task[];
-}
+function todayKey(): string { return new Date().toISOString().slice(0, 10); }
 
 function loadToday(): TodayData {
   if (typeof window === "undefined") return { date: todayKey(), tasks: freshTasks() };
@@ -162,8 +158,20 @@ function loadToday(): TodayData {
     const saved = localStorage.getItem(TODAY_KEY);
     if (saved) {
       const data: TodayData = JSON.parse(saved);
-      if (data.date === todayKey()) return data;
-      // Day changed — archive yesterday and start fresh
+      if (data.date === todayKey()) {
+        // Reconcile: add any new templates not in saved data
+        const templates = buildTemplates();
+        const existingIds = new Set(data.tasks.map((t) => t.id));
+        for (const tmpl of templates) {
+          if (!existingIds.has(tmpl.id)) {
+            data.tasks.push({ ...tmpl, status: "pending", elapsed: 0, completedCount: 0 });
+          }
+        }
+        // Remove tasks that are no longer in templates
+        const templateIds = new Set(templates.map((t) => t.id));
+        data.tasks = data.tasks.filter((t) => templateIds.has(t.id));
+        return data;
+      }
       archiveDay(data);
     }
   } catch {}
@@ -171,27 +179,20 @@ function loadToday(): TodayData {
 }
 
 function saveToday(data: TodayData) {
-  try {
-    localStorage.setItem(TODAY_KEY, JSON.stringify(data));
-  } catch {}
+  try { localStorage.setItem(TODAY_KEY, JSON.stringify(data)); } catch {}
 }
 
 function archiveDay(data: TodayData) {
   const completed = data.tasks.filter((t) => t.status === "done").length;
-  if (completed === 0) return; // Don't archive empty days
-  const record: DayRecord = {
-    date: data.date,
-    tasks: data.tasks,
-    totalMinutes: data.tasks.reduce((sum, t) => sum + t.completedCount * (t.duration / 60), 0),
-    completedCount: completed,
-    totalCount: data.tasks.length,
-  };
+  if (completed === 0) return;
   try {
     const history: DayRecord[] = JSON.parse(localStorage.getItem(HISTORY_KEY) || "[]");
-    // Don't duplicate
-    if (!history.some((h) => h.date === record.date)) {
-      history.unshift(record);
-      // Keep last 30 days
+    if (!history.some((h) => h.date === data.date)) {
+      history.unshift({
+        date: data.date, tasks: data.tasks,
+        totalMinutes: data.tasks.reduce((s, t) => s + t.completedCount * (t.duration / 60), 0),
+        completedCount: completed, totalCount: data.tasks.length,
+      });
       if (history.length > 30) history.pop();
       localStorage.setItem(HISTORY_KEY, JSON.stringify(history));
     }
@@ -200,166 +201,158 @@ function archiveDay(data: TodayData) {
 
 function loadHistory(): DayRecord[] {
   if (typeof window === "undefined") return [];
-  try {
-    return JSON.parse(localStorage.getItem(HISTORY_KEY) || "[]");
-  } catch {
-    return [];
+  try { return JSON.parse(localStorage.getItem(HISTORY_KEY) || "[]"); } catch { return []; }
+}
+
+// ── Helpers ──
+function formatTime(s: number): string {
+  return `${Math.floor(s / 60).toString().padStart(2, "0")}:${(s % 60).toString().padStart(2, "0")}`;
+}
+function formatDate(d: string): string {
+  return new Date(d + "T00:00:00").toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric" });
+}
+function formatDateLong(d: string): string {
+  return new Date(d + "T00:00:00").toLocaleDateString("en-US", { weekday: "long", month: "short", day: "numeric" });
+}
+
+function getStreak(history: DayRecord[]): number {
+  if (!history.length) return 0;
+  let streak = 0;
+  const sorted = [...history].sort((a, b) => b.date.localeCompare(a.date));
+  for (let i = 0; i < sorted.length; i++) {
+    const d = new Date(); d.setDate(d.getDate() - i);
+    const expected = d.toISOString().slice(0, 10);
+    if (sorted[i]?.date === expected && sorted[i].completedCount > 0) streak++;
+    else if (i === 0 && sorted[0].date === todayKey()) { streak++; continue; }
+    else break;
   }
+  return streak;
 }
 
-function formatTime(seconds: number): string {
-  const m = Math.floor(seconds / 60);
-  const s = seconds % 60;
-  return `${m.toString().padStart(2, "0")}:${s.toString().padStart(2, "0")}`;
-}
+// ── Shorthand for CSS var references in className ──
+const V = {
+  bg: "var(--color-bg)",
+  surface: "var(--color-surface)",
+  surfaceHover: "var(--color-surface-hover)",
+  surfaceActive: "var(--color-surface-active)",
+  surfaceSuccess: "var(--color-surface-success)",
+  border: "var(--color-border)",
+  borderActive: "var(--color-border-active)",
+  borderSuccess: "var(--color-border-success)",
+  text: "var(--color-text)",
+  muted: "var(--color-text-muted)",
+  faint: "var(--color-text-faint)",
+  inverse: "var(--color-text-inverse)",
+  accent: "var(--color-accent)",
+  accentHover: "var(--color-accent-hover)",
+  accentSoft: "var(--color-accent-soft)",
+  success: "var(--color-success)",
+  successHover: "var(--color-success-hover)",
+  warning: "var(--color-warning)",
+  warningBg: "var(--color-warning-bg)",
+  warningBorder: "var(--color-warning-border)",
+  ringTrack: "var(--color-ring-track)",
+} as const;
 
-function formatDate(dateStr: string): string {
-  const d = new Date(dateStr + "T00:00:00");
-  return d.toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric" });
-}
-
-function formatDateLong(dateStr: string): string {
-  const d = new Date(dateStr + "T00:00:00");
-  return d.toLocaleDateString("en-US", { weekday: "long", month: "short", day: "numeric" });
-}
-
+// ── Timer Ring ──
 function TimerRing({ progress, size = 220, stroke = 8, overtime = false }: { progress: number; size?: number; stroke?: number; overtime?: boolean }) {
-  const radius = (size - stroke) / 2;
-  const circumference = 2 * Math.PI * radius;
-  const offset = circumference * (1 - progress);
-  const gradientId = overtime ? "grad-overtime" : "grad-timer";
+  const r = (size - stroke) / 2;
+  const c = 2 * Math.PI * r;
+  const off = c * (1 - progress);
   return (
     <svg width={size} height={size} className="transform -rotate-90">
       <defs>
-        <linearGradient id="grad-timer" x1="0%" y1="0%" x2="100%" y2="100%">
-          <stop offset="0%" stopColor="#5c7cfa" />
-          <stop offset="50%" stopColor="#748ffc" />
-          <stop offset="100%" stopColor="#9775fa" />
+        <linearGradient id="gt" x1="0%" y1="0%" x2="100%" y2="100%">
+          <stop offset="0%" stopColor={V.accent} />
+          <stop offset="50%" stopColor="var(--color-accent-gradient-mid)" />
+          <stop offset="100%" stopColor="var(--color-accent-gradient-end)" />
         </linearGradient>
-        <linearGradient id="grad-overtime" x1="0%" y1="0%" x2="100%" y2="100%">
-          <stop offset="0%" stopColor="#51cf66" />
+        <linearGradient id="go" x1="0%" y1="0%" x2="100%" y2="100%">
+          <stop offset="0%" stopColor={V.success} />
           <stop offset="50%" stopColor="#69db7c" />
-          <stop offset="100%" stopColor="#fcc419" />
+          <stop offset="100%" stopColor={V.warning} />
         </linearGradient>
       </defs>
-      {/* Track ring */}
-      <circle cx={size / 2} cy={size / 2} r={radius} fill="none" stroke="#1e2538" strokeWidth={stroke} />
-      {/* Outer glow */}
-      <circle
-        cx={size / 2} cy={size / 2} r={radius} fill="none"
-        stroke={overtime ? "rgba(81,207,102,0.1)" : "rgba(92,124,250,0.1)"}
-        strokeWidth={stroke + 12}
-        strokeDasharray={circumference}
-        strokeDashoffset={offset}
-        strokeLinecap="round"
-        className="transition-all duration-1000 ease-linear"
-      />
-      {/* Main progress ring with gradient */}
-      <circle
-        cx={size / 2}
-        cy={size / 2}
-        r={radius}
-        fill="none"
-        stroke={`url(#${gradientId})`}
-        strokeWidth={stroke}
-        strokeDasharray={circumference}
-        strokeDashoffset={offset}
-        strokeLinecap="round"
-        className="transition-all duration-1000 ease-linear"
-      />
+      <circle cx={size/2} cy={size/2} r={r} fill="none" stroke={V.ringTrack} strokeWidth={stroke} />
+      <circle cx={size/2} cy={size/2} r={r} fill="none"
+        stroke={overtime ? "rgba(93,217,122,0.1)" : V.accentSoft}
+        strokeWidth={stroke + 12} strokeDasharray={c} strokeDashoffset={off}
+        strokeLinecap="round" className="transition-all duration-1000 ease-linear" />
+      <circle cx={size/2} cy={size/2} r={r} fill="none"
+        stroke={`url(#${overtime ? "go" : "gt"})`}
+        strokeWidth={stroke} strokeDasharray={c} strokeDashoffset={off}
+        strokeLinecap="round" className="transition-all duration-1000 ease-linear" />
     </svg>
   );
 }
 
-// Streak calculation
-function getStreak(history: DayRecord[]): number {
-  if (history.length === 0) return 0;
-  let streak = 0;
-  const today = todayKey();
-  const sorted = [...history].sort((a, b) => b.date.localeCompare(a.date));
-
-  for (let i = 0; i < sorted.length; i++) {
-    const expected = new Date();
-    expected.setDate(expected.getDate() - i);
-    const expectedStr = expected.toISOString().slice(0, 10);
-
-    // Allow today to not be completed yet
-    if (i === 0 && sorted[0].date !== today && sorted[0].date !== expectedStr) {
-      // Check if yesterday
-      const yesterday = new Date();
-      yesterday.setDate(yesterday.getDate() - 1);
-      if (sorted[0].date !== yesterday.toISOString().slice(0, 10)) break;
-    }
-
-    if (sorted[i].date === expectedStr || (i === 0 && sorted[i].date === today)) {
-      if (sorted[i].completedCount > 0) streak++;
-      else break;
-    } else {
-      break;
-    }
-  }
-  return streak;
-}
+// ── Emoji picker for task editor ──
+const EMOJI_OPTIONS = ["\uD83D\uDCDA", "\u270D\uFE0F", "\uD83C\uDFCB\uFE0F", "\uD83E\uDDD8", "\uD83C\uDFA8", "\uD83C\uDFB5", "\uD83D\uDCBB", "\uD83E\uDDE0", "\uD83C\uDFA5", "\uD83C\uDF73", "\uD83D\uDCD3", "\u2615"];
+const DURATION_OPTIONS = [5, 10, 15, 20, 30, 45, 60];
 
 type View = "splash" | "list" | "timer" | "success" | "allDone" | "history";
 
 export default function Home() {
   const [dayData, setDayData] = useState<TodayData>({ date: todayKey(), tasks: freshTasks() });
   const [view, setView] = useState<View>("splash");
-  const [activeIdx, setActiveIdx] = useState<number>(-1);
+  const [activeIdx, setActiveIdx] = useState(-1);
   const [running, setRunning] = useState(false);
   const [overtime, setOvertime] = useState(false);
   const [mounted, setMounted] = useState(false);
   const [installPrompt, setInstallPrompt] = useState<Event | null>(null);
   const [showInstalled, setShowInstalled] = useState(false);
   const [history, setHistory] = useState<DayRecord[]>([]);
+  const [editMode, setEditMode] = useState(false);
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [showAddForm, setShowAddForm] = useState(false);
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const tasks = dayData.tasks;
 
-  const updateTasks = useCallback((updater: (tasks: Task[]) => Task[]) => {
+  const updateTasks = useCallback((updater: (t: Task[]) => Task[]) => {
     setDayData((prev) => ({ ...prev, tasks: updater(prev.tasks) }));
   }, []);
 
+  // ── Mount + theme ──
   useEffect(() => {
-    const loaded = loadToday();
-    setDayData(loaded);
+    setDayData(loadToday());
     setHistory(loadHistory());
     setMounted(true);
 
-    if ("serviceWorker" in navigator) {
-      navigator.serviceWorker.register("/sw.js").catch(() => {});
-    }
+    if ("serviceWorker" in navigator) navigator.serviceWorker.register("/sw.js").catch(() => {});
 
-    const handler = (e: Event) => {
-      e.preventDefault();
-      setInstallPrompt(e);
-    };
+    const handler = (e: Event) => { e.preventDefault(); setInstallPrompt(e); };
     window.addEventListener("beforeinstallprompt", handler);
     if (window.matchMedia("(display-mode: standalone)").matches) setShowInstalled(true);
-    return () => window.removeEventListener("beforeinstallprompt", handler);
+
+    // Time-based theme
+    const applyTheme = () => {
+      const h = new Date().getHours();
+      const isLight = h >= 6 && h < 18;
+      document.documentElement.classList.toggle("light", isLight);
+      document.querySelector('meta[name="theme-color"]')?.setAttribute("content", isLight ? "#faf8f5" : "#0f0f12");
+    };
+    applyTheme();
+    const themeInterval = setInterval(applyTheme, 60000);
+
+    return () => {
+      window.removeEventListener("beforeinstallprompt", handler);
+      clearInterval(themeInterval);
+    };
   }, []);
 
+  // ── Save ──
   useEffect(() => {
-    if (mounted) {
-      saveToday(dayData);
-      // Sync daily summary to Supabase when any task is completed
-      const hasCompleted = dayData.tasks.some((t) => t.status === "done");
-      if (hasCompleted) {
-        syncDaySummary(
-          dayData.date,
-          dayData.tasks.map((t) => ({
-            id: t.id,
-            label: t.label,
-            status: t.status,
-            completedCount: t.completedCount,
-            duration: t.duration,
-          }))
-        );
-      }
+    if (!mounted) return;
+    saveToday(dayData);
+    if (dayData.tasks.some((t) => t.status === "done")) {
+      syncDaySummary(dayData.date, dayData.tasks.map((t) => ({
+        id: t.id, label: t.label, status: t.status, completedCount: t.completedCount, duration: t.duration,
+      })));
     }
   }, [dayData, mounted]);
 
+  // ── Timer tick ──
   useEffect(() => {
     if (running && activeIdx >= 0) {
       intervalRef.current = setInterval(() => {
@@ -367,450 +360,513 @@ export default function Home() {
           const next = [...prev];
           const task = { ...next[activeIdx] };
           task.elapsed += 1;
-          if (task.elapsed >= task.duration && !overtime) {
-            // Enter overtime — don't stop, just flip the flag
-            setOvertime(true);
-          }
+          if (task.elapsed >= task.duration && !overtime) setOvertime(true);
           next[activeIdx] = task;
           return next;
         });
       }, 1000);
     }
-    return () => {
-      if (intervalRef.current) clearInterval(intervalRef.current);
-    };
-  }, [running, activeIdx, updateTasks]);
+    return () => { if (intervalRef.current) clearInterval(intervalRef.current); };
+  }, [running, activeIdx, updateTasks, overtime]);
 
+  // ── Actions ──
   const startTask = useCallback((idx: number) => {
-    updateTasks((prev) => {
-      const next = [...prev];
-      next[idx] = { ...next[idx], status: "active", elapsed: 0 };
-      return next;
-    });
-    setActiveIdx(idx);
-    setRunning(true);
-    setOvertime(false);
-    setView("timer");
+    updateTasks((p) => { const n = [...p]; n[idx] = { ...n[idx], status: "active", elapsed: 0 }; return n; });
+    setActiveIdx(idx); setRunning(true); setOvertime(false); setView("timer");
   }, [updateTasks]);
 
   const repeatTask = useCallback((idx: number) => {
-    updateTasks((prev) => {
-      const next = [...prev];
-      next[idx] = { ...next[idx], status: "pending", elapsed: 0 };
-      return next;
-    });
+    updateTasks((p) => { const n = [...p]; n[idx] = { ...n[idx], status: "pending", elapsed: 0 }; return n; });
   }, [updateTasks]);
 
   const untickTask = useCallback((idx: number) => {
-    updateTasks((prev) => {
-      const next = [...prev];
-      const task = { ...next[idx] };
-      task.status = "pending";
-      task.elapsed = 0;
-      task.completedCount = Math.max(0, task.completedCount - 1);
-      next[idx] = task;
-      return next;
+    updateTasks((p) => {
+      const n = [...p]; const t = { ...n[idx] };
+      t.status = "pending"; t.elapsed = 0; t.completedCount = Math.max(0, t.completedCount - 1);
+      n[idx] = t; return n;
     });
   }, [updateTasks]);
 
-  const pauseResume = useCallback(() => setRunning((r) => !r), []);
-
   const skipTask = useCallback(() => {
-    updateTasks((prev) => {
-      const next = [...prev];
-      next[activeIdx] = { ...next[activeIdx], status: "skipped" };
-      return next;
-    });
-    setRunning(false);
-    setOvertime(false);
-    setView("list");
+    updateTasks((p) => { const n = [...p]; n[activeIdx] = { ...n[activeIdx], status: "skipped" }; return n; });
+    setRunning(false); setOvertime(false); setView("list");
   }, [activeIdx, updateTasks]);
 
   const finishTask = useCallback(() => {
     const task = tasks[activeIdx];
-    const wasOvertime = task.elapsed > task.duration;
-
-    // Log to Supabase
     logSession({
-      task_id: task.id,
-      task_label: task.label,
-      duration_planned: task.duration,
-      duration_actual: task.elapsed,
-      completed_at: new Date().toISOString(),
-      date: dayData.date,
-      was_overtime: wasOvertime,
+      task_id: task.id, task_label: task.label, duration_planned: task.duration,
+      duration_actual: task.elapsed, completed_at: new Date().toISOString(),
+      date: dayData.date, was_overtime: task.elapsed > task.duration,
     });
-
-    updateTasks((prev) => {
-      const next = [...prev];
-      const t = { ...next[activeIdx] };
-      t.status = "done";
-      t.completedCount += 1;
-      next[activeIdx] = t;
-      return next;
+    updateTasks((p) => {
+      const n = [...p]; const t = { ...n[activeIdx] };
+      t.status = "done"; t.completedCount += 1; n[activeIdx] = t; return n;
     });
-    setRunning(false);
-    setOvertime(false);
-    setView("success");
+    setRunning(false); setOvertime(false); setView("success");
   }, [activeIdx, tasks, dayData.date, updateTasks]);
 
   const continueAfterSuccess = useCallback(() => {
-    if (tasks.some((t) => t.status === "pending")) {
-      setView("list");
-    } else {
-      setView("allDone");
-    }
+    setView(tasks.some((t) => t.status === "pending") ? "list" : "allDone");
   }, [tasks]);
 
   const resetAll = useCallback(() => {
     setDayData({ date: todayKey(), tasks: freshTasks() });
-    setView("list");
-    setActiveIdx(-1);
-    setRunning(false);
-    setOvertime(false);
+    setView("list"); setActiveIdx(-1); setRunning(false); setOvertime(false);
   }, []);
+
+  // ── Task CRUD ──
+  const addCustomTask = useCallback((tmpl: TaskTemplate) => {
+    const custom = loadCustomTasks();
+    custom.push(tmpl);
+    saveCustomTasks(custom);
+    updateTasks((p) => [...p, { ...tmpl, status: "pending" as TaskStatus, elapsed: 0, completedCount: 0 }]);
+    setShowAddForm(false);
+  }, [updateTasks]);
+
+  const deleteTask = useCallback((taskId: string) => {
+    const isBuiltin = BUILTIN_TASKS.some((t) => t.id === taskId) || taskId === "record-video";
+    if (isBuiltin) {
+      const hidden = loadHiddenTasks();
+      hidden.push(taskId);
+      saveHiddenTasks(hidden);
+    } else {
+      const custom = loadCustomTasks().filter((t) => t.id !== taskId);
+      saveCustomTasks(custom);
+    }
+    updateTasks((p) => p.filter((t) => t.id !== taskId));
+  }, [updateTasks]);
+
+  const updateTask = useCallback((taskId: string, updates: Partial<TaskTemplate>) => {
+    const isBuiltin = BUILTIN_TASKS.some((t) => t.id === taskId) || taskId === "record-video";
+    if (!isBuiltin) {
+      const custom = loadCustomTasks().map((t) => t.id === taskId ? { ...t, ...updates } : t);
+      saveCustomTasks(custom);
+    }
+    updateTasks((p) => p.map((t) => t.id === taskId ? { ...t, ...updates } : t));
+    setEditingId(null);
+  }, [updateTasks]);
 
   const handleInstall = async () => {
     if (!installPrompt) return;
-    const prompt = installPrompt as BeforeInstallPromptEvent;
-    prompt.prompt();
-    const result = await prompt.userChoice;
-    if (result.outcome === "accepted") setShowInstalled(true);
+    const p = installPrompt as BeforeInstallPromptEvent;
+    p.prompt();
+    const r = await p.userChoice;
+    if (r.outcome === "accepted") setShowInstalled(true);
     setInstallPrompt(null);
   };
 
-  if (!mounted) {
-    return (
-      <div className="flex items-center justify-center min-h-screen">
-        <div className="text-[#6b7394]">Loading...</div>
-      </div>
-    );
-  }
+  if (!mounted) return (
+    <div className="flex items-center justify-center min-h-screen">
+      <div style={{ color: V.muted }}>Loading...</div>
+    </div>
+  );
 
-  // ── SPLASH SCREEN ──
-  if (view === "splash") {
-    return (
-      <div
-        className="flex flex-col items-center justify-center min-h-screen text-center px-4 cursor-pointer"
-        onClick={() => setView("list")}
-      >
-        <img
-          src="/gonchu.webp"
-          alt="Ghochu"
-          className="w-44 h-44 object-contain mb-4 animate-pop-in animate-float"
-        />
-        <img src={randomSticker("hype")} alt="" className="w-14 h-14 mb-4 animate-sticker-drop" style={{ animationDelay: "0.3s" }} />
-        <h1 className="text-3xl font-bold mb-2 animate-fade-up" style={{ animationDelay: "0.4s" }}>
-          Hey Gonchuuu
-        </h1>
-        <p className="text-[#6b7394] text-sm mb-8 animate-fade-up" style={{ animationDelay: "0.6s" }}>Ready to crush your non-negotiables?</p>
-        <p className="text-[#4a5278] text-xs animate-pulse animate-fade-up" style={{ animationDelay: "0.8s" }}>tap anywhere to start</p>
-      </div>
-    );
-  }
+  // ── SPLASH ──
+  if (view === "splash") return (
+    <div className="flex flex-col items-center justify-center min-h-screen text-center px-4 cursor-pointer" onClick={() => setView("list")}>
+      <img src="/gonchu.webp" alt="Ghochu" className="w-44 h-44 object-contain mb-4 animate-pop-in animate-float" />
+      <img src={randomSticker("hype")} alt="" className="w-14 h-14 mb-4 animate-sticker-drop" style={{ animationDelay: "0.3s" }} />
+      <h1 className="text-3xl font-bold mb-2 animate-fade-up" style={{ animationDelay: "0.4s" }}>Hey Gonchuuu</h1>
+      <p className="text-sm mb-8 animate-fade-up" style={{ color: V.muted, animationDelay: "0.6s" }}>Ready to crush your non-negotiables?</p>
+      <p className="text-xs animate-pulse animate-fade-up" style={{ color: V.faint, animationDelay: "0.8s" }}>tap anywhere to start</p>
+    </div>
+  );
 
   const activeTask = activeIdx >= 0 ? tasks[activeIdx] : null;
   const remaining = activeTask ? activeTask.duration - activeTask.elapsed : 0;
   const progress = activeTask ? activeTask.elapsed / activeTask.duration : 0;
   const completedCount = tasks.filter((t) => t.status === "done").length;
-  const totalMinutes = tasks.reduce((sum, t) => sum + t.completedCount * (t.duration / 60), 0);
+  const totalMinutes = tasks.reduce((s, t) => s + t.completedCount * (t.duration / 60), 0);
   const streak = getStreak(history);
+  const motivation = QUOTES[Math.floor(Date.now() / 3600000) % QUOTES.length];
 
-  // ── HISTORY VIEW ──
-  if (view === "history") {
-    return (
-      <div className="max-w-md mx-auto px-4 py-8 min-h-screen">
-        <div className="flex items-center justify-between mb-6">
-          <button onClick={() => setView("list")} className="text-[#5c7cfa] text-sm">&larr; Back</button>
-          <h1 className="text-lg font-bold">Daily Progress</h1>
-          <div className="w-12" />
-        </div>
-
-        {streak > 0 && (
-          <div className="text-center mb-6 p-4 rounded-xl bg-[#111520] border border-[#1e2538]">
-            <img src="/emoji/sticker_17.png" alt="Soldier" className="w-14 h-14 mb-1 mx-auto" />
-            <div className="text-lg font-bold">{streak} day streak</div>
-            <div className="text-[#6b7394] text-sm">Keep it going!</div>
-          </div>
-        )}
-
-        {history.length === 0 ? (
-          <div className="text-center text-[#6b7394] mt-12">
-            <p className="text-lg mb-2">No history yet</p>
-            <p className="text-sm">Complete your first day to see progress here</p>
-          </div>
-        ) : (
-          <div className="space-y-3">
-            {history.map((day) => (
-              <div key={day.date} className="p-4 rounded-xl bg-[#111520] border border-[#1e2538]">
-                <div className="flex items-center justify-between mb-2">
-                  <span className="font-medium text-sm">{formatDate(day.date)}</span>
-                  <span className="text-[#51cf66] text-sm">
-                    {day.completedCount}/{day.totalCount}
-                  </span>
-                </div>
-                {/* Mini progress bar */}
-                <div className="w-full h-1 bg-[#1e2538] rounded-full overflow-hidden mb-2">
-                  <div
-                    className="h-full bg-[#51cf66] rounded-full"
-                    style={{ width: `${(day.completedCount / day.totalCount) * 100}%` }}
-                  />
-                </div>
-                <div className="flex gap-1.5 flex-wrap">
-                  {day.tasks.map((t) => (
-                    <span
-                      key={t.id}
-                      title={t.label}
-                      className={`text-xs px-2 py-0.5 rounded-full ${
-                        t.status === "done" ? "bg-[#0d1a12] text-[#51cf66]" : "bg-[#1a1a1a] text-[#4a5278]"
-                      }`}
-                    >
-                      {t.emoji} {t.completedCount > 1 ? `${t.completedCount}x` : ""}
-                    </span>
-                  ))}
-                </div>
-                <div className="text-[#6b7394] text-xs mt-2">{Math.round(day.totalMinutes)} min focused</div>
-              </div>
-            ))}
-          </div>
-        )}
+  // ── HISTORY ──
+  if (view === "history") return (
+    <div className="max-w-md mx-auto px-4 py-8 min-h-screen">
+      <div className="flex items-center justify-between mb-6">
+        <button onClick={() => setView("list")} className="text-sm font-medium" style={{ color: V.accent }}>&larr; Back</button>
+        <h1 className="text-lg font-bold">Daily Progress</h1>
+        <div className="w-12" />
       </div>
-    );
-  }
-
-  const motivation = getMotivation();
-
-  // ── LIST VIEW ──
-  if (view === "list") {
-    return (
-      <div className="max-w-md mx-auto px-4 py-8 min-h-screen flex flex-col">
-        <div className="text-center mb-6 animate-fade-down">
-          <h1 className="text-2xl font-bold tracking-tight">Non-Negotiables</h1>
-          <p className="text-[#6b7394] text-sm mt-1">{formatDateLong(dayData.date)}</p>
-          <p className="text-[#6b7394] text-xs mt-0.5">
-            {completedCount}/{tasks.length} completed
-            {streak > 0 && <span className="ml-2">&#128293; {streak} day streak</span>}
-          </p>
+      {streak > 0 && (
+        <div className="text-center mb-6 p-4 rounded-xl" style={{ background: V.surface, border: `1px solid ${V.border}` }}>
+          <img src="/emoji/sticker_17.png" alt="" className="w-14 h-14 mb-1 mx-auto" />
+          <div className="text-lg font-bold">{streak} day streak</div>
+          <div className="text-sm" style={{ color: V.muted }}>Keep it going!</div>
         </div>
-
-        {/* Motivational quote */}
-        <div className="text-center mb-6 px-4">
-          <p className="text-[#4a5278] text-sm italic">&ldquo;{motivation.text}&rdquo;</p>
-          {motivation.author && <p className="text-[#3d4566] text-xs mt-1">&mdash; {motivation.author}</p>}
+      )}
+      {history.length === 0 ? (
+        <div className="text-center mt-12" style={{ color: V.muted }}>
+          <p className="text-lg mb-2">No history yet</p>
+          <p className="text-sm">Complete your first day to see progress here</p>
         </div>
-
-        <div className="w-full h-1.5 bg-[#1e2538] rounded-full mb-6 overflow-hidden">
-          <div
-            className="h-full bg-[#5c7cfa] rounded-full transition-all duration-500"
-            style={{ width: `${(completedCount / tasks.length) * 100}%` }}
-          />
-        </div>
-
-        <div className="space-y-3 flex-1 stagger-children">
-          {tasks.map((task, idx) => (
-            <div
-              key={task.id}
-              className={`w-full flex items-center gap-4 p-4 rounded-xl border animate-fade-up card-lift ${
-                task.status === "done"
-                  ? "bg-[#0d1a12] border-[#1a3520]"
-                  : task.status === "skipped"
-                  ? "bg-[#111520] border-[#1e2538] opacity-40"
-                  : task.status === "active"
-                  ? "bg-[#141830] border-[#5c7cfa] animate-glow"
-                  : "bg-[#111520] border-[#1e2538]"
-              }`}
-            >
-              <span className="text-2xl">{task.emoji}</span>
-              <div className="flex-1 text-left">
-                <div className={`font-medium ${task.status === "done" && !task.repeatable ? "line-through text-[#6b7394]" : ""}`}>
-                  {task.label}
-                </div>
-                <div className="text-sm text-[#6b7394]">
-                  {task.duration / 60} min
-                  {task.completedCount > 0 && (
-                    <span className="ml-2 text-[#51cf66]">&#10003; {task.completedCount}x</span>
-                  )}
-                </div>
+      ) : (
+        <div className="space-y-3">
+          {history.map((day) => (
+            <div key={day.date} className="p-4 rounded-xl" style={{ background: V.surface, border: `1px solid ${V.border}` }}>
+              <div className="flex items-center justify-between mb-2">
+                <span className="font-medium text-sm">{formatDate(day.date)}</span>
+                <span className="text-sm" style={{ color: V.success }}>{day.completedCount}/{day.totalCount}</span>
               </div>
-              {task.status === "done" && task.repeatable ? (
-                <button onClick={() => repeatTask(idx)} className="text-[#5c7cfa] text-sm font-medium hover:text-[#748ffc] transition-colors">
-                  Again &rarr;
-                </button>
-              ) : task.status === "done" ? (
-                <button onClick={() => untickTask(idx)} className="text-[#51cf66] text-lg hover:text-[#6b7394] transition-colors" title="Undo">&#10003;</button>
-              ) : task.status === "skipped" ? (
-                <span className="text-[#6b7394] text-sm">skipped</span>
-              ) : (
-                <button onClick={() => startTask(idx)} className="text-[#5c7cfa] text-sm font-medium hover:text-[#748ffc] transition-colors">
-                  Start &#8594;
-                </button>
-              )}
+              <div className="w-full h-1 rounded-full overflow-hidden mb-2" style={{ background: V.border }}>
+                <div className="h-full rounded-full" style={{ background: V.success, width: `${(day.completedCount / day.totalCount) * 100}%` }} />
+              </div>
+              <div className="flex gap-1.5 flex-wrap">
+                {day.tasks.map((t) => (
+                  <span key={t.id} className="text-xs px-2 py-0.5 rounded-full"
+                    style={{ background: t.status === "done" ? V.surfaceSuccess : V.surface, color: t.status === "done" ? V.success : V.faint }}>
+                    {t.emoji} {t.completedCount > 1 ? `${t.completedCount}x` : ""}
+                  </span>
+                ))}
+              </div>
+              <div className="text-xs mt-2" style={{ color: V.muted }}>{Math.round(day.totalMinutes)} min focused</div>
             </div>
           ))}
         </div>
+      )}
+    </div>
+  );
 
-        <div className="mt-6 space-y-3 pt-4 border-t border-[#1e2538]">
-          {/* History button */}
-          <button
-            onClick={() => setView("history")}
-            className="w-full flex items-center justify-center gap-2 py-2.5 rounded-lg border border-[#1e2538] text-sm text-[#6b7394] hover:text-[#d4dae8] hover:border-[#5c7cfa] transition-all"
-          >
-            <svg width="16" height="16" viewBox="0 0 16 16" fill="none" className="opacity-60">
-              <path d="M8 4v4l3 2M14 8a6 6 0 11-12 0 6 6 0 0112 0z" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
-            </svg>
-            Daily Progress
-          </button>
-
-          {completedCount > 0 && (
-            <button onClick={resetAll} className="w-full text-sm text-[#6b7394] hover:text-[#d4dae8] transition-colors py-2">
-              Reset all sessions
+  // ── LIST ──
+  if (view === "list") return (
+    <div className="max-w-md mx-auto px-4 py-8 min-h-screen flex flex-col">
+      <div className="text-center mb-6 animate-fade-down">
+        <div className="flex items-center justify-center gap-2">
+          <h1 className="text-2xl font-bold tracking-tight">Non-Negotiables</h1>
+          {!running && (
+            <button onClick={() => { setEditMode(!editMode); setEditingId(null); setShowAddForm(false); }}
+              className="p-1.5 rounded-lg transition-all" style={{ color: editMode ? V.accent : V.muted, background: editMode ? V.accentSoft : "transparent" }}>
+              <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M11.5 1.5l3 3L5 14H2v-3L11.5 1.5z" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" /></svg>
             </button>
           )}
+        </div>
+        <p className="text-sm mt-1" style={{ color: V.muted }}>{formatDateLong(dayData.date)}</p>
+        {editMode ? (
+          <p className="text-xs mt-1 italic" style={{ color: V.faint }}>Your non-negotiables. No excuses.</p>
+        ) : (
+          <p className="text-xs mt-0.5" style={{ color: V.muted }}>
+            {completedCount}/{tasks.length} completed
+            {streak > 0 && <span className="ml-2">&#128293; {streak} day streak</span>}
+          </p>
+        )}
+      </div>
 
+      {!editMode && (
+        <div className="text-center mb-6 px-4">
+          <p className="text-sm italic" style={{ color: V.faint }}>&ldquo;{motivation.text}&rdquo;</p>
+          {motivation.author && <p className="text-xs mt-1" style={{ color: V.faint }}>&mdash; {motivation.author}</p>}
+        </div>
+      )}
+
+      {!editMode && (
+        <div className="w-full h-1.5 rounded-full mb-6 overflow-hidden" style={{ background: V.border }}>
+          <div className="h-full rounded-full transition-all duration-500" style={{ background: V.accent, width: `${(completedCount / tasks.length) * 100}%` }} />
+        </div>
+      )}
+
+      <div className="space-y-3 flex-1 stagger-children">
+        {tasks.map((task, idx) => (
+          <div key={task.id}>
+            {editingId === task.id ? (
+              <TaskEditForm task={task} onSave={(u) => updateTask(task.id, u)} onCancel={() => setEditingId(null)} />
+            ) : (
+              <div className={`w-full flex items-center gap-4 p-4 rounded-xl animate-fade-up card-lift ${editMode ? "cursor-pointer" : ""}`}
+                style={{
+                  background: task.status === "done" ? V.surfaceSuccess : task.status === "active" ? V.surfaceActive : V.surface,
+                  border: `1px solid ${task.status === "done" ? V.borderSuccess : task.status === "active" ? V.borderActive : V.border}`,
+                  opacity: task.status === "skipped" ? 0.4 : 1,
+                }}
+                onClick={editMode && !task.isCustom ? undefined : undefined}
+              >
+                <span className="text-2xl">{task.emoji}</span>
+                <div className="flex-1 text-left">
+                  <div className="font-medium" style={{ color: task.status === "done" && !task.repeatable ? V.muted : V.text, textDecoration: task.status === "done" && !task.repeatable ? "line-through" : "none" }}>
+                    {task.label}
+                  </div>
+                  <div className="text-sm" style={{ color: V.muted }}>
+                    {task.duration / 60} min
+                    {task.completedCount > 0 && <span className="ml-2" style={{ color: V.success }}>&#10003; {task.completedCount}x</span>}
+                  </div>
+                </div>
+                {editMode ? (
+                  <div className="flex gap-2">
+                    {task.isCustom && (
+                      <button onClick={() => setEditingId(task.id)} className="p-1 rounded" style={{ color: V.muted }}>
+                        <svg width="14" height="14" viewBox="0 0 16 16" fill="none"><path d="M11.5 1.5l3 3L5 14H2v-3L11.5 1.5z" stroke="currentColor" strokeWidth="1.5" /></svg>
+                      </button>
+                    )}
+                    <button onClick={() => deleteTask(task.id)} className="p-1 rounded transition-colors hover:bg-red-500/10" style={{ color: "#ef4444" }}>
+                      <svg width="14" height="14" viewBox="0 0 16 16" fill="none"><path d="M2 4h12M5.33 4V2.67a1.33 1.33 0 011.34-1.34h2.66a1.33 1.33 0 011.34 1.34V4m2 0v9.33a1.33 1.33 0 01-1.34 1.34H4.67a1.33 1.33 0 01-1.34-1.34V4h9.34z" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" /></svg>
+                    </button>
+                  </div>
+                ) : task.status === "done" && task.repeatable ? (
+                  <button onClick={() => repeatTask(idx)} className="text-sm font-medium transition-colors" style={{ color: V.accent }}>Again &rarr;</button>
+                ) : task.status === "done" ? (
+                  <button onClick={() => untickTask(idx)} className="text-lg transition-colors" style={{ color: V.success }} title="Undo">&#10003;</button>
+                ) : task.status === "skipped" ? (
+                  <span className="text-sm" style={{ color: V.muted }}>skipped</span>
+                ) : (
+                  <button onClick={() => startTask(idx)} className="text-sm font-medium transition-colors" style={{ color: V.accent }}>Start &#8594;</button>
+                )}
+              </div>
+            )}
+          </div>
+        ))}
+
+        {editMode && !showAddForm && (
+          <button onClick={() => setShowAddForm(true)}
+            className="w-full p-4 rounded-xl border-2 border-dashed text-sm font-medium transition-all animate-fade-up"
+            style={{ borderColor: V.border, color: V.muted }}>
+            + Add Session
+          </button>
+        )}
+
+        {showAddForm && <TaskAddForm onAdd={addCustomTask} onCancel={() => setShowAddForm(false)} />}
+      </div>
+
+      {!editMode && (
+        <div className="mt-6 space-y-3 pt-4" style={{ borderTop: `1px solid ${V.border}` }}>
+          <button onClick={() => setView("history")} className="w-full flex items-center justify-center gap-2 py-2.5 rounded-lg text-sm transition-all"
+            style={{ border: `1px solid ${V.border}`, color: V.muted }}>
+            <svg width="16" height="16" viewBox="0 0 16 16" fill="none" className="opacity-60"><path d="M8 4v4l3 2M14 8a6 6 0 11-12 0 6 6 0 0112 0z" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" /></svg>
+            Daily Progress
+          </button>
+          {completedCount > 0 && (
+            <button onClick={resetAll} className="w-full text-sm py-2 transition-colors" style={{ color: V.muted }}>Reset all sessions</button>
+          )}
           {installPrompt && !showInstalled && (
-            <button
-              onClick={handleInstall}
-              className="w-full flex items-center justify-center gap-2 py-2.5 rounded-lg border border-[#1e2538] text-sm text-[#6b7394] hover:text-[#d4dae8] hover:border-[#5c7cfa] transition-all"
-            >
-              <svg width="16" height="16" viewBox="0 0 16 16" fill="none" className="opacity-60">
-                <path d="M8 1v9m0 0L5 7m3 3l3-3M3 13h10" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
-              </svg>
+            <button onClick={handleInstall} className="w-full flex items-center justify-center gap-2 py-2.5 rounded-lg text-sm transition-all"
+              style={{ border: `1px solid ${V.border}`, color: V.muted }}>
+              <svg width="16" height="16" viewBox="0 0 16 16" fill="none" className="opacity-60"><path d="M8 1v9m0 0L5 7m3 3l3-3M3 13h10" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" /></svg>
               Install App
             </button>
           )}
-          {showInstalled && <p className="text-center text-xs text-[#6b7394]">&#10003; App installed</p>}
+          {showInstalled && <p className="text-center text-xs" style={{ color: V.muted }}>&#10003; App installed</p>}
         </div>
-      </div>
-    );
-  }
+      )}
+    </div>
+  );
 
-  // ── TIMER VIEW ──
+  // ── TIMER ──
   if (view === "timer" && activeTask) {
-    const timerMotivation = TIMER_MOTIVATIONS[activeIdx % TIMER_MOTIVATIONS.length];
+    const timerMsg = TIMER_MSGS[activeIdx % TIMER_MSGS.length];
     return (
       <div className="max-w-md mx-auto px-4 py-8 flex flex-col items-center justify-center min-h-screen">
-        {/* DND Reminder */}
-        <div className="mb-4 px-4 py-2 rounded-lg bg-[#1a1a0a] border border-[#332200] text-center animate-fade-down">
-          <p className="text-[#f59e0b] text-xs font-medium">&#128244; Turn on Do Not Disturb for zero distractions</p>
+        <div className="mb-4 px-4 py-2 rounded-lg text-center animate-fade-down"
+          style={{ background: V.warningBg, border: `1px solid ${V.warningBorder}` }}>
+          <p className="text-xs font-medium" style={{ color: V.warning }}>&#128244; Turn on Do Not Disturb for zero distractions</p>
         </div>
-
-        {/* Contextual emoji */}
-        <img
-          src={overtime ? randomSticker("fire") : running ? randomSticker("focus") : randomSticker("lazy")}
-          alt=""
-          className={`w-12 h-12 mb-2 ${overtime ? "animate-wiggle" : "animate-sticker-drop"}`}
-          key={`${running}-${overtime}`}
-        />
+        <img src={overtime ? randomSticker("fire") : running ? randomSticker("focus") : randomSticker("lazy")}
+          alt="" className={`w-12 h-12 mb-2 ${overtime ? "animate-wiggle" : "animate-sticker-drop"}`} key={`${running}-${overtime}`} />
         <div className="text-center mb-2 animate-scale-in"><span className="text-4xl">{activeTask.emoji}</span></div>
         <h2 className="text-xl font-semibold mb-1 animate-fade-up">{activeTask.label}</h2>
-        <p className="text-[#6b7394] text-sm mb-8 animate-fade-up" style={{ animationDelay: "0.1s" }}>Session {activeIdx + 1} of {tasks.length}</p>
+        <p className="text-sm mb-8 animate-fade-up" style={{ color: V.muted, animationDelay: "0.1s" }}>Session {activeIdx + 1} of {tasks.length}</p>
         <div className={`relative mb-8 ${overtime ? "timer-glow-overtime" : "timer-glow"}`}>
           <TimerRing progress={overtime ? 1 : progress} overtime={overtime} />
           <div className="absolute inset-0 flex flex-col items-center justify-center">
             {overtime ? (
               <>
-                <span className="text-xs text-[#51cf66] font-medium mb-1">OVERTIME</span>
-                <span className="text-4xl font-mono font-bold tracking-wider text-[#51cf66]">
-                  +{formatTime(activeTask.elapsed - activeTask.duration)}
-                </span>
-                <span className="text-[#6b7394] text-xs mt-1">keep going or finish</span>
+                <span className="text-xs font-medium mb-1" style={{ color: V.success }}>OVERTIME</span>
+                <span className="text-4xl font-mono font-bold tracking-wider" style={{ color: V.success }}>+{formatTime(activeTask.elapsed - activeTask.duration)}</span>
+                <span className="text-xs mt-1" style={{ color: V.muted }}>keep going or finish</span>
               </>
             ) : (
               <>
                 <span className="text-4xl font-mono font-bold tracking-wider">{formatTime(remaining)}</span>
-                <span className="text-[#6b7394] text-xs mt-1">{running ? "focusing" : "paused"}</span>
+                <span className="text-xs mt-1" style={{ color: V.muted }}>{running ? "focusing" : "paused"}</span>
               </>
             )}
           </div>
         </div>
-
         {overtime && (
           <div className="text-center mb-4">
-            <p className="text-[#51cf66] text-sm font-medium">Time&apos;s up! You&apos;re in the zone — keep going or wrap up.</p>
+            <p className="text-sm font-medium" style={{ color: V.success }}>Time&apos;s up! You&apos;re in the zone — keep going or wrap up.</p>
           </div>
         )}
-
         <div className="flex gap-3">
           {!overtime && (
-            <button onClick={skipTask} className="btn-press px-5 py-2.5 rounded-lg border border-[#2a3352] text-[#6b7394] hover:text-[#d4dae8] hover:border-[#4a5278] transition-all text-sm">Skip</button>
+            <button onClick={skipTask} className="btn-press px-5 py-2.5 rounded-lg text-sm transition-all"
+              style={{ border: `1px solid ${V.border}`, color: V.muted }}>Skip</button>
           )}
-          <button onClick={pauseResume} className={`px-8 py-2.5 rounded-lg font-medium text-sm transition-all ${running ? "bg-[#1a2240] text-[#5c7cfa] hover:bg-[#1a2d55]" : "bg-[#5c7cfa] text-white hover:bg-[#4263eb]"}`}>
+          <button onClick={() => setRunning((r) => !r)}
+            className="btn-press px-8 py-2.5 rounded-lg font-medium text-sm transition-all"
+            style={{ background: running ? V.accentSoft : V.accent, color: running ? V.accent : V.inverse }}>
             {running ? "Pause" : "Resume"}
           </button>
-          <button onClick={finishTask} className={`px-5 py-2.5 rounded-lg font-medium text-sm transition-all ${overtime ? "bg-[#51cf66] text-[#090b10] hover:bg-[#40c057]" : "border border-[#1a3520] text-[#51cf66] hover:bg-[#0d1a12]"}`}>
+          <button onClick={finishTask}
+            className="btn-press px-5 py-2.5 rounded-lg font-medium text-sm transition-all"
+            style={overtime
+              ? { background: V.success, color: V.inverse }
+              : { border: `1px solid ${V.borderSuccess}`, color: V.success }
+            }>
             {overtime ? "Finish" : "Done"}
           </button>
         </div>
-
-        {/* Timer motivation */}
-        <p className="mt-8 text-[#4a5278] text-sm italic text-center max-w-xs">{timerMotivation}</p>
+        <p className="mt-8 text-sm italic text-center max-w-xs" style={{ color: V.faint }}>{timerMsg}</p>
       </div>
     );
   }
 
-  // ── SUCCESS VIEW ──
+  // ── SUCCESS ──
   if (view === "success" && activeTask) {
-    // Fire confetti on mount
     fireConfetti();
     return (
       <div className="max-w-md mx-auto px-4 py-8 flex flex-col items-center justify-center min-h-screen text-center">
-        <img src={randomSticker("celebrate")} alt="Crushed it" className="w-20 h-20 mb-2 animate-pop-in" />
+        <img src={randomSticker("celebrate")} alt="" className="w-20 h-20 mb-2 animate-pop-in" />
         <h2 className="text-2xl font-bold mb-2 animate-fade-up" style={{ animationDelay: "0.2s" }}>Nice work, Gonchuuu!</h2>
-        <p className="text-[#5c7cfa] text-sm mb-3 italic max-w-xs animate-fade-up" style={{ animationDelay: "0.3s" }}>{getSuccessMessage()}</p>
-        <p className="text-[#6b7394] mb-1 animate-fade-up" style={{ animationDelay: "0.4s" }}>
-          You completed <span className="text-[#d4dae8] font-medium">{activeTask.label}</span>
+        <p className="text-sm mb-3 italic max-w-xs animate-fade-up" style={{ color: V.accent, animationDelay: "0.3s" }}>{SUCCESS_MSGS[Math.floor(Math.random() * SUCCESS_MSGS.length)]}</p>
+        <p className="mb-1 animate-fade-up" style={{ color: V.muted, animationDelay: "0.4s" }}>
+          You completed <span className="font-medium" style={{ color: V.text }}>{activeTask.label}</span>
         </p>
-        {activeTask.completedCount > 1 && <p className="text-[#5c7cfa] text-sm mb-1 animate-fade-up">{activeTask.completedCount} times today</p>}
-        <p className="text-[#6b7394] text-sm mb-8 animate-fade-up" style={{ animationDelay: "0.5s" }}>{completedCount} of {tasks.length} sessions done</p>
+        {activeTask.completedCount > 1 && <p className="text-sm mb-1 animate-fade-up" style={{ color: V.accent }}>{activeTask.completedCount} times today</p>}
+        <p className="text-sm mb-8 animate-fade-up" style={{ color: V.muted, animationDelay: "0.5s" }}>{completedCount} of {tasks.length} sessions done</p>
         <div className="flex gap-2 mb-8 animate-fade-up" style={{ animationDelay: "0.6s" }}>
           {tasks.map((t) => (
-            <div key={t.id} className={`w-3 h-3 rounded-full transition-all ${t.status === "done" ? "bg-[#51cf66] animate-scale-in" : t.status === "skipped" ? "bg-[#2a3352]" : "bg-[#1e2538]"}`} />
+            <div key={t.id} className="w-3 h-3 rounded-full transition-all"
+              style={{ background: t.status === "done" ? V.success : t.status === "skipped" ? V.border : V.ringTrack }} />
           ))}
         </div>
-        <button onClick={continueAfterSuccess} className="btn-press px-8 py-3 bg-[#5c7cfa] text-white rounded-lg font-medium hover:bg-[#4263eb] transition-all animate-fade-up animate-shimmer" style={{ animationDelay: "0.7s" }}>
+        <button onClick={continueAfterSuccess} className="btn-press px-8 py-3 rounded-lg font-medium transition-all animate-fade-up animate-shimmer"
+          style={{ background: V.accent, color: V.inverse, animationDelay: "0.7s" }}>
           {tasks.every((t) => t.status === "done" || t.status === "skipped") ? "See Summary" : "Next Session \u2192"}
         </button>
       </div>
     );
   }
 
-  // ── ALL DONE VIEW ──
+  // ── ALL DONE ──
   if (view === "allDone") {
     fireBigConfetti();
     return (
       <div className="max-w-md mx-auto px-4 py-8 flex flex-col items-center justify-center min-h-screen text-center">
-        <img src={randomSticker("fire")} alt="Beast mode" className="w-16 h-16 mb-2 animate-pop-in" />
+        <img src={randomSticker("fire")} alt="" className="w-16 h-16 mb-2 animate-pop-in" />
         <img src="/gonchu.webp" alt="Ghochu" className="w-28 h-28 object-contain mb-2 animate-float" />
         <h2 className="text-2xl font-bold mb-2">All Done, Gonchuuu!</h2>
-        <p className="text-[#6b7394] mb-6">
-          You focused for <span className="text-[#d4dae8] font-medium">{Math.round(totalMinutes)} minutes</span> today
+        <p className="mb-6" style={{ color: V.muted }}>
+          You focused for <span className="font-medium" style={{ color: V.text }}>{Math.round(totalMinutes)} minutes</span> today
         </p>
         <div className="w-full space-y-2 mb-8">
           {tasks.map((task) => (
-            <div key={task.id} className="flex items-center gap-3 p-3 rounded-lg bg-[#111520] border border-[#1e2538]">
+            <div key={task.id} className="flex items-center gap-3 p-3 rounded-lg"
+              style={{ background: V.surface, border: `1px solid ${V.border}` }}>
               <span className="text-lg">{task.emoji}</span>
               <span className="flex-1 text-left text-sm">{task.label}</span>
-              {task.status === "done" ? (
-                <span className="text-[#51cf66] text-sm">&#10003; {task.completedCount > 1 ? `${task.completedCount}x` : `${task.duration / 60}m`}</span>
-              ) : (
-                <span className="text-[#6b7394] text-sm">skipped</span>
-              )}
+              <span className="text-sm" style={{ color: task.status === "done" ? V.success : V.muted }}>
+                {task.status === "done" ? `\u2713 ${task.completedCount > 1 ? `${task.completedCount}x` : `${task.duration / 60}m`}` : "skipped"}
+              </span>
             </div>
           ))}
         </div>
         <div className="flex gap-3">
-          <button onClick={() => setView("history")} className="px-6 py-3 bg-[#111520] border border-[#1e2538] text-[#d4dae8] rounded-lg font-medium hover:border-[#5c7cfa] transition-all">
-            View Progress
-          </button>
-          <button onClick={resetAll} className="px-6 py-3 bg-[#111520] border border-[#1e2538] text-[#6b7394] rounded-lg font-medium hover:border-[#4a5278] transition-all">
-            Start Fresh
-          </button>
+          <button onClick={() => setView("history")} className="btn-press px-6 py-3 rounded-lg font-medium transition-all"
+            style={{ background: V.surface, border: `1px solid ${V.border}`, color: V.text }}>View Progress</button>
+          <button onClick={resetAll} className="btn-press px-6 py-3 rounded-lg font-medium transition-all"
+            style={{ background: V.surface, border: `1px solid ${V.border}`, color: V.muted }}>Start Fresh</button>
         </div>
       </div>
     );
   }
 
   return null;
+}
+
+// ── Task Add Form ──
+function TaskAddForm({ onAdd, onCancel }: { onAdd: (t: TaskTemplate) => void; onCancel: () => void }) {
+  const [label, setLabel] = useState("");
+  const [emoji, setEmoji] = useState("\uD83D\uDCDA");
+  const [duration, setDuration] = useState(15);
+  const [repeatable, setRepeatable] = useState(false);
+
+  return (
+    <div className="p-4 rounded-xl animate-fade-up" style={{ background: V.surface, border: `1px solid ${V.borderActive}` }}>
+      <p className="text-xs font-medium mb-3" style={{ color: V.accent }}>New Session</p>
+      <input value={label} onChange={(e) => setLabel(e.target.value)} placeholder="Session name" maxLength={30}
+        className="w-full px-3 py-2 rounded-lg text-sm mb-3 outline-none focus:ring-2"
+        style={{ background: V.surfaceHover, border: `1px solid ${V.border}`, color: V.text, "--tw-ring-color": V.accent } as React.CSSProperties} />
+      <div className="flex gap-1.5 flex-wrap mb-3">
+        {EMOJI_OPTIONS.map((e) => (
+          <button key={e} onClick={() => setEmoji(e)}
+            className="w-9 h-9 rounded-lg text-lg flex items-center justify-center transition-all"
+            style={{ background: emoji === e ? V.accentSoft : V.surfaceHover, border: `1px solid ${emoji === e ? V.borderActive : "transparent"}` }}>
+            {e}
+          </button>
+        ))}
+      </div>
+      <div className="flex gap-1.5 flex-wrap mb-3">
+        {DURATION_OPTIONS.map((d) => (
+          <button key={d} onClick={() => setDuration(d)}
+            className="px-3 py-1.5 rounded-lg text-xs font-medium transition-all"
+            style={{ background: duration === d ? V.accentSoft : V.surfaceHover, color: duration === d ? V.accent : V.muted,
+              border: `1px solid ${duration === d ? V.borderActive : "transparent"}` }}>
+            {d}m
+          </button>
+        ))}
+      </div>
+      <label className="flex items-center gap-2 mb-4 cursor-pointer">
+        <input type="checkbox" checked={repeatable} onChange={(e) => setRepeatable(e.target.checked)}
+          className="w-4 h-4 rounded" style={{ accentColor: V.accent }} />
+        <span className="text-sm" style={{ color: V.muted }}>Can repeat?</span>
+      </label>
+      <div className="flex gap-2">
+        <button onClick={onCancel} className="btn-press flex-1 py-2 rounded-lg text-sm" style={{ border: `1px solid ${V.border}`, color: V.muted }}>Cancel</button>
+        <button onClick={() => {
+          if (!label.trim()) return;
+          onAdd({ id: `custom-${Date.now()}`, label: label.trim(), emoji, duration: duration * 60, repeatable, isCustom: true });
+        }} disabled={!label.trim()} className="btn-press flex-1 py-2 rounded-lg text-sm font-medium transition-all"
+          style={{ background: label.trim() ? V.accent : V.surfaceHover, color: label.trim() ? V.inverse : V.faint }}>
+          Add
+        </button>
+      </div>
+    </div>
+  );
+}
+
+// ── Task Edit Form (inline) ──
+function TaskEditForm({ task, onSave, onCancel }: { task: Task; onSave: (u: Partial<TaskTemplate>) => void; onCancel: () => void }) {
+  const [label, setLabel] = useState(task.label);
+  const [emoji, setEmoji] = useState(task.emoji);
+  const [duration, setDuration] = useState(task.duration / 60);
+  const [repeatable, setRepeatable] = useState(task.repeatable);
+
+  return (
+    <div className="p-4 rounded-xl animate-fade-up" style={{ background: V.surface, border: `1px solid ${V.borderActive}` }}>
+      <p className="text-xs font-medium mb-3" style={{ color: V.accent }}>Edit Session</p>
+      <input value={label} onChange={(e) => setLabel(e.target.value)} maxLength={30}
+        className="w-full px-3 py-2 rounded-lg text-sm mb-3 outline-none"
+        style={{ background: V.surfaceHover, border: `1px solid ${V.border}`, color: V.text }} />
+      <div className="flex gap-1.5 flex-wrap mb-3">
+        {EMOJI_OPTIONS.map((e) => (
+          <button key={e} onClick={() => setEmoji(e)}
+            className="w-9 h-9 rounded-lg text-lg flex items-center justify-center transition-all"
+            style={{ background: emoji === e ? V.accentSoft : V.surfaceHover, border: `1px solid ${emoji === e ? V.borderActive : "transparent"}` }}>
+            {e}
+          </button>
+        ))}
+      </div>
+      <div className="flex gap-1.5 flex-wrap mb-3">
+        {DURATION_OPTIONS.map((d) => (
+          <button key={d} onClick={() => setDuration(d)}
+            className="px-3 py-1.5 rounded-lg text-xs font-medium transition-all"
+            style={{ background: duration === d ? V.accentSoft : V.surfaceHover, color: duration === d ? V.accent : V.muted,
+              border: `1px solid ${duration === d ? V.borderActive : "transparent"}` }}>
+            {d}m
+          </button>
+        ))}
+      </div>
+      <label className="flex items-center gap-2 mb-4 cursor-pointer">
+        <input type="checkbox" checked={repeatable} onChange={(e) => setRepeatable(e.target.checked)}
+          className="w-4 h-4 rounded" style={{ accentColor: V.accent }} />
+        <span className="text-sm" style={{ color: V.muted }}>Can repeat?</span>
+      </label>
+      <div className="flex gap-2">
+        <button onClick={onCancel} className="btn-press flex-1 py-2 rounded-lg text-sm" style={{ border: `1px solid ${V.border}`, color: V.muted }}>Cancel</button>
+        <button onClick={() => onSave({ label: label.trim(), emoji, duration: duration * 60, repeatable })}
+          className="btn-press flex-1 py-2 rounded-lg text-sm font-medium"
+          style={{ background: V.accent, color: V.inverse }}>Save</button>
+      </div>
+    </div>
+  );
 }
 
 interface BeforeInstallPromptEvent extends Event {

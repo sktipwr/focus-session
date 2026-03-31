@@ -1,18 +1,73 @@
 @import "tailwindcss";
 
+/* ── Dark Theme (default) ── */
 :root {
-  --bg: #090b10;
-  --card: #111520;
-  --card-hover: #161c2e;
-  --border: #1e2538;
-  --border-active: #3b5bdb;
-  --text: #d4dae8;
-  --muted: #6b7394;
-  --accent: #5c7cfa;
-  --accent-glow: #4263eb;
-  --success: #51cf66;
-  --success-dim: #0d2818;
-  --warning: #fcc419;
+  --color-bg: #0f0f12;
+  --color-surface: #1a1a20;
+  --color-surface-hover: #222228;
+  --color-surface-active: #1e1e2c;
+  --color-surface-success: #132016;
+
+  --color-border: #2a2a34;
+  --color-border-active: #7b93ff;
+  --color-border-success: #264d33;
+
+  --color-text: #e8e6e3;
+  --color-text-muted: #9b9baa;
+  --color-text-faint: #6e6e7a;
+  --color-text-inverse: #0f0f12;
+
+  --color-accent: #7b93ff;
+  --color-accent-hover: #5a75e6;
+  --color-accent-soft: rgba(123, 147, 255, 0.12);
+  --color-accent-gradient-mid: #8fa4ff;
+  --color-accent-gradient-end: #b4a0ff;
+
+  --color-success: #5dd97a;
+  --color-success-hover: #4cc468;
+  --color-warning: #f5a623;
+  --color-warning-bg: #1f1a0e;
+  --color-warning-border: #3d3018;
+
+  --color-water: #7b93ff;
+  --color-ring-track: #2a2a34;
+
+  color-scheme: dark;
+}
+
+/* ── Light Theme ── */
+.light {
+  --color-bg: #faf8f5;
+  --color-surface: #ffffff;
+  --color-surface-hover: #f2f0ed;
+  --color-surface-active: #eef0ff;
+  --color-surface-success: #ecfaef;
+
+  --color-border: #e0ddd8;
+  --color-border-active: #5a6fd6;
+  --color-border-success: #b3e6c0;
+
+  --color-text: #1a1a20;
+  --color-text-muted: #5c5c66;
+  --color-text-faint: #8a8a94;
+  --color-text-inverse: #ffffff;
+
+  --color-accent: #4a5fd6;
+  --color-accent-hover: #3a4fc0;
+  --color-accent-soft: rgba(74, 95, 214, 0.08);
+  --color-accent-gradient-mid: #6478e0;
+  --color-accent-gradient-end: #8b78d6;
+
+  --color-success: #2ea84d;
+  --color-success-hover: #249440;
+  --color-warning: #d4920a;
+  --color-warning-bg: #fef8ea;
+  --color-warning-border: #e8d5a0;
+
+  --color-water: #4a5fd6;
+  --color-ring-track: #e0ddd8;
+
+  color-scheme: light;
 }
 
 * {
@@ -20,11 +75,12 @@
 }
 
 body {
-  background: var(--bg);
-  color: var(--text);
+  background: var(--color-bg);
+  color: var(--color-text);
   font-family: 'Inter', system-ui, -apple-system, sans-serif;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+  transition: background-color 0.3s ease, color 0.3s ease;
 }
 
 html {
@@ -33,59 +89,54 @@ html {
 
 ::-webkit-scrollbar { width: 4px; }
 ::-webkit-scrollbar-track { background: transparent; }
-::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
+::-webkit-scrollbar-thumb { background: var(--color-border); border-radius: 2px; }
 
 .font-mono {
   font-family: 'JetBrains Mono', ui-monospace, monospace;
 }
 
-/* ── View transitions ── */
+/* ── Animations ── */
 @keyframes fadeSlideUp {
   from { opacity: 0; transform: translateY(20px); }
   to { opacity: 1; transform: translateY(0); }
 }
-
 @keyframes fadeSlideDown {
   from { opacity: 0; transform: translateY(-20px); }
   to { opacity: 1; transform: translateY(0); }
 }
-
 @keyframes scaleIn {
   from { opacity: 0; transform: scale(0.8); }
   to { opacity: 1; transform: scale(1); }
 }
-
 @keyframes popIn {
   0% { opacity: 0; transform: scale(0.3); }
   50% { transform: scale(1.1); }
   100% { opacity: 1; transform: scale(1); }
 }
-
 @keyframes wiggle {
   0%, 100% { transform: rotate(0deg); }
   25% { transform: rotate(-8deg); }
   75% { transform: rotate(8deg); }
 }
-
 @keyframes float {
   0%, 100% { transform: translateY(0); }
   50% { transform: translateY(-8px); }
 }
-
 @keyframes shimmer {
   0% { background-position: -200% center; }
   100% { background-position: 200% center; }
 }
-
 @keyframes glow-pulse {
-  0%, 100% { box-shadow: 0 0 8px rgba(92, 124, 250, 0.2); }
-  50% { box-shadow: 0 0 20px rgba(92, 124, 250, 0.5); }
+  0%, 100% { box-shadow: 0 0 8px var(--color-accent-soft); }
+  50% { box-shadow: 0 0 20px var(--color-accent-soft); }
 }
-
 @keyframes sticker-drop {
   0% { opacity: 0; transform: translateY(-30px) rotate(-15deg) scale(0.5); }
   60% { transform: translateY(5px) rotate(3deg) scale(1.05); }
   100% { opacity: 1; transform: translateY(0) rotate(0deg) scale(1); }
+}
+@keyframes slideOut {
+  to { opacity: 0; transform: translateX(-100%); height: 0; padding: 0; margin: 0; overflow: hidden; }
 }
 
 .animate-fade-up { animation: fadeSlideUp 0.5s ease-out both; }
@@ -96,9 +147,10 @@ html {
 .animate-float { animation: float 3s ease-in-out infinite; }
 .animate-glow { animation: glow-pulse 2s ease-in-out infinite; }
 .animate-sticker-drop { animation: sticker-drop 0.6s cubic-bezier(0.175, 0.885, 0.32, 1.275) both; }
+.animate-slide-out { animation: slideOut 0.3s ease-out forwards; }
 
 .animate-shimmer {
-  background: linear-gradient(90deg, transparent 0%, rgba(92,124,250,0.1) 50%, transparent 100%);
+  background: linear-gradient(90deg, transparent 0%, var(--color-accent-soft) 50%, transparent 100%);
   background-size: 200% 100%;
   animation: shimmer 2s ease-in-out infinite;
 }
@@ -112,8 +164,10 @@ html {
 .stagger-children > *:nth-child(6) { animation-delay: 300ms; }
 .stagger-children > *:nth-child(7) { animation-delay: 360ms; }
 .stagger-children > *:nth-child(8) { animation-delay: 420ms; }
+.stagger-children > *:nth-child(9) { animation-delay: 480ms; }
+.stagger-children > *:nth-child(10) { animation-delay: 540ms; }
 
-/* Button press effect */
+/* Interaction effects */
 .btn-press {
   transition: transform 0.1s ease, box-shadow 0.1s ease;
 }
@@ -121,19 +175,17 @@ html {
   transform: scale(0.95);
 }
 
-/* Card hover lift */
 .card-lift {
-  transition: transform 0.2s ease, border-color 0.2s ease, box-shadow 0.2s ease;
+  transition: transform 0.2s ease, border-color 0.2s ease, box-shadow 0.2s ease, background-color 0.3s ease;
 }
 .card-lift:hover {
   transform: translateY(-2px);
-  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15);
 }
 
-/* Timer ring glow */
 .timer-glow {
-  filter: drop-shadow(0 0 12px rgba(92, 124, 250, 0.3));
+  filter: drop-shadow(0 0 12px var(--color-accent-soft));
 }
 .timer-glow-overtime {
-  filter: drop-shadow(0 0 12px rgba(81, 207, 102, 0.4));
+  filter: drop-shadow(0 0 12px rgba(93, 217, 122, 0.4));
 }
