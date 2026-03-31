@@ -67,7 +67,8 @@ function buildTemplates(): TaskTemplate[] {
   return [...withOverrides, ...custom.map((t) => ({ ...t, isCustom: true }))];
 }
 function freshTasks(): Task[] { return buildTemplates().map((t) => ({ ...t, status: "pending" as TaskStatus, elapsed: 0, completedCount: 0 })); }
-function todayKey(): string { return new Date().toISOString().slice(0, 10); }
+function localDateStr(d: Date = new Date()): string { return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`; }
+function todayKey(): string { return localDateStr(); }
 function loadToday(): TodayData {
   if (typeof window === "undefined") return { date: todayKey(), tasks: freshTasks() };
   try { const s = localStorage.getItem(TK); if (s) { const d: TodayData = JSON.parse(s); if (d.date === todayKey()) { const tmpl = buildTemplates(), ids = new Set(d.tasks.map(t=>t.id)); for (const t of tmpl) if (!ids.has(t.id)) d.tasks.push({...t,status:"pending",elapsed:0,completedCount:0}); const tids = new Set(tmpl.map(t=>t.id)); d.tasks = d.tasks.filter(t=>tids.has(t.id)); return d; } archiveDay(d); } } catch {} return { date: todayKey(), tasks: freshTasks() };
@@ -88,7 +89,20 @@ function fmtMins(m: number): string {
   const w = Math.floor(d / 7), rd = d % 7;
   return rd > 0 ? `${w}w ${rd}d` : `${w}w`;
 }
-function getStreak(h: DayRecord[]): number { if(!h.length) return 0; let s=0; const sorted=[...h].sort((a,b)=>b.date.localeCompare(a.date)); for(let i=0;i<sorted.length;i++){const d=new Date();d.setDate(d.getDate()-i);const exp=d.toISOString().slice(0,10);if(sorted[i]?.date===exp&&sorted[i].completedCount>0)s++;else if(i===0&&sorted[0].date===todayKey()){s++;continue;}else break;} return s; }
+function getStreak(h: DayRecord[], todayCC = 0): number {
+  const tk = todayKey();
+  const map = new Map(h.map(d=>[d.date,d.completedCount]));
+  if (todayCC > 0) map.set(tk, todayCC);
+  if (!map.size) return 0;
+  let s = 0;
+  for (let i = 0; i <= 365; i++) {
+    const d = new Date(); d.setDate(d.getDate()-i);
+    const ds = localDateStr(d);
+    if ((map.get(ds)||0) > 0) s++;
+    else break;
+  }
+  return s;
+}
 
 const QUOTES=["Discipline is choosing between what you want now and what you want most.","The secret of getting ahead is getting started.","Small daily improvements are the key to staggering long-term results.","You don't have to be extreme, just consistent.","Your future self is watching you right now through memories.","One focused hour is worth more than a distracted day.","Don't break the chain. Show up every single day.","Hard choices, easy life. Easy choices, hard life."];
 const SUCCESS_MSGS=["Crushed it!","That's what consistency looks like.","Future you is grateful.","You showed up. That's what matters.","Another brick in the wall of discipline.","Your focus muscle just got stronger.","No excuses. You did it right."];
@@ -321,7 +335,7 @@ export default function Home() {
   const prog=at?Math.min(1,at.elapsed/at.duration):0;
   const cc=tasks.filter(t=>t.status==="done").length;
   const tm=tasks.reduce((s,t)=>s+t.completedCount*(t.duration/60),0);
-  const streak=getStreak(history);
+  const streak=getStreak(history,cc);
   const pct=tasks.length?Math.round((cc/tasks.length)*100):0;
 
   return (<div className="max-w-md mx-auto min-h-screen flex flex-col">
@@ -391,20 +405,20 @@ export default function Home() {
       </div>
       <div className="grid grid-cols-2 gap-3 mb-5">
         <div className="p-4 rounded-xl text-center" style={{background:V.surface,border:`1px solid ${V.border}`}}><p className="text-2xl font-bold">&#128293; {streak}</p><p className="text-[10px] mt-0.5" style={{color:V.muted}}>Current Streak</p></div>
-        <div className="p-4 rounded-xl text-center" style={{background:V.surface,border:`1px solid ${V.border}`}}><p className="text-2xl font-bold">{(()=>{let l=streak;if(history.length>1){const s=[...history].sort((a,b)=>a.date.localeCompare(b.date));let r=1;for(let i=1;i<s.length;i++){const diff=(new Date(s[i].date+"T00:00:00").getTime()-new Date(s[i-1].date+"T00:00:00").getTime())/86400000;if(diff===1&&s[i].completedCount>0){r++;if(r>l)l=r;}else r=s[i].completedCount>0?1:0;}}return l;})()}</p><p className="text-[10px] mt-0.5" style={{color:V.muted}}>Best Streak</p></div>
+        <div className="p-4 rounded-xl text-center" style={{background:V.surface,border:`1px solid ${V.border}`}}><p className="text-2xl font-bold">{(()=>{const allH=cc>0&&!history.some(h=>h.date===todayKey())?[{date:todayKey(),tasks,totalMinutes:tm,completedCount:cc,totalCount:tasks.length},...history]:history;let l=streak;if(allH.length>1){const s=[...allH].sort((a,b)=>a.date.localeCompare(b.date));let r=1;for(let i=1;i<s.length;i++){const diff=(new Date(s[i].date+"T00:00:00").getTime()-new Date(s[i-1].date+"T00:00:00").getTime())/86400000;if(diff===1&&s[i].completedCount>0){r++;if(r>l)l=r;}else r=s[i].completedCount>0?1:0;}}return l;})()}</p><p className="text-[10px] mt-0.5" style={{color:V.muted}}>Best Streak</p></div>
       </div>
 
       {/* Focus Journey */}
       <div className="p-4 rounded-xl mb-5" style={{background:V.surface,border:`1px solid ${V.border}`}}>
         <p className="text-xs font-medium mb-3">Focus Journey</p>
-        <div className="flex items-end gap-2 h-28">{(()=>{const days:{l:string;m:number;isToday:boolean}[]=[];for(let i=6;i>=0;i--){const d=new Date();d.setDate(d.getDate()-i);const ds=d.toISOString().slice(0,10);const isT=i===0;const rec=history.find(h=>h.date===ds);days.push({l:d.toLocaleDateString("en-US",{weekday:"short"}),m:isT?tm:(rec?.totalMinutes||0),isToday:isT});}const mx=Math.max(...days.map(d=>d.m),1);return days.map((d,i)=>(<div key={i} className="flex-1 flex flex-col items-center gap-1"><div className="w-full rounded-t-md transition-all" style={{height:`${Math.max(4,(d.m/mx)*100)}%`,background:d.isToday?V.accent:d.m>0?"var(--color-grid-3)":V.border}}/><span className="text-[9px]" style={{color:d.isToday?V.accent:V.faint}}>{d.l}</span></div>));})()}</div>
+        <div className="flex items-end gap-2 h-28">{(()=>{const days:{l:string;m:number;isToday:boolean}[]=[];for(let i=6;i>=0;i--){const d=new Date();d.setDate(d.getDate()-i);const ds=localDateStr(d);const isT=i===0;const rec=history.find(h=>h.date===ds);days.push({l:d.toLocaleDateString("en-US",{weekday:"short"}),m:isT?tm:(rec?.totalMinutes||0),isToday:isT});}const mx=Math.max(...days.map(d=>d.m),1);const MAXPX=88;return days.map((d,i)=>(<div key={i} className="flex-1 flex flex-col justify-end items-center gap-1"><div className="w-full rounded-t-sm transition-all" style={{height:`${Math.max(3,Math.round((d.m/mx)*MAXPX))}px`,background:d.isToday?V.accent:d.m>0?"var(--color-grid-3)":V.border}}/><span className="text-[9px]" style={{color:d.isToday?V.accent:V.faint}}>{d.l}</span></div>));})()}</div>
       </div>
 
       {/* Consistency grid */}
       <div className="p-4 rounded-xl mb-5" style={{background:V.surface,border:`1px solid ${V.border}`}}>
         <div className="flex justify-between items-center mb-3"><p className="text-xs font-medium">Consistency</p><div className="flex items-center gap-1 text-[9px]" style={{color:V.faint}}><span>Less</span>{[V.surface,"var(--color-grid-1)","var(--color-grid-2)","var(--color-grid-3)",V.success].map((c,i)=>(<div key={i} className="w-2 h-2 rounded-sm" style={{background:c,border:i===0?`1px solid ${V.border}`:"none"}}/>))}<span>More</span></div></div>
         <div className="flex gap-[3px]"><div className="flex flex-col gap-[3px] mr-1" style={{color:V.faint,fontSize:"8px",lineHeight:"11px"}}><span>M</span><span>T</span><span>W</span><span>T</span><span>F</span><span>S</span><span>S</span></div>
-        {(()=>{const hm=new Map(history.map(d=>[d.date,d]));const weeks:React.ReactNode[]=[];const today=new Date();const start=new Date(today);start.setDate(today.getDate()-34);const d0=start.getDay();start.setDate(start.getDate()-(d0===0?6:d0-1));const cur=new Date(start);for(let w=0;w<5;w++){const cells:React.ReactNode[]=[];for(let d=0;d<7;d++){const ds=cur.toISOString().slice(0,10);const rec=hm.get(ds);const isFut=cur>today;const isToday=ds===todayKey();let lvl=0;const comp=isToday?cc:(rec?.completedCount||0);const tot=isToday?tasks.length:(rec?.totalCount||1);if(!isFut&&comp>0){const r=comp/tot;lvl=r<0.33?1:r<0.66?2:r<1?3:4;}const cols=[V.surface,"var(--color-grid-1)","var(--color-grid-2)","var(--color-grid-3)",V.success];cells.push(<div key={ds} className="w-[11px] h-[11px] rounded-[2px]" style={{background:isFut?"transparent":cols[lvl],border:isToday?`1.5px solid ${V.accent}`:lvl===0&&!isFut?`1px solid ${V.border}`:"none",opacity:isFut?0.15:1}}/>);cur.setDate(cur.getDate()+1);}weeks.push(<div key={w} className="flex flex-col gap-[3px] flex-1">{cells}</div>);}return weeks;})()}
+        {(()=>{const hm=new Map(history.map(d=>[d.date,d]));const weeks:React.ReactNode[]=[];const todayStr=todayKey();const today=new Date();const start=new Date(today);start.setDate(today.getDate()-34);const d0=start.getDay();start.setDate(start.getDate()-(d0===0?6:d0-1));const cur=new Date(start);for(let w=0;w<5;w++){const cells:React.ReactNode[]=[];for(let d=0;d<7;d++){const ds=localDateStr(cur);const rec=hm.get(ds);const isFut=ds>todayStr;const isToday=ds===todayStr;let lvl=0;const comp=isToday?cc:(rec?.completedCount||0);const tot=isToday?tasks.length:(rec?.totalCount||1);if(!isFut&&comp>0){const r=comp/tot;lvl=r<0.33?1:r<0.66?2:r<1?3:4;}const cols=[V.surface,"var(--color-grid-1)","var(--color-grid-2)","var(--color-grid-3)",V.success];cells.push(<div key={ds} className="w-[11px] h-[11px] rounded-[2px]" style={{background:isFut?"transparent":cols[lvl],border:isToday?`1.5px solid ${V.accent}`:lvl===0&&!isFut?`1px solid ${V.border}`:"none",opacity:isFut?0.15:1}}/>);cur.setDate(cur.getDate()+1);}weeks.push(<div key={w} className="flex flex-col gap-[3px] flex-1">{cells}</div>);}return weeks;})()}
         </div>
       </div>
 
@@ -428,7 +442,7 @@ export default function Home() {
                   <p className="text-xs font-medium truncate">{e.label}</p>
                   <p className="text-xs font-bold shrink-0 ml-2" style={{color:V.accent}}>{fmtMins(e.mins)} total</p>
                 </div>
-                <p className="text-[10px]" style={{color:V.faint}}>{e.sessions} session{e.sessions!==1?"s":""} · <span style={{color:V.muted}}>~{fmtMins(perDay*7)}/week · ~{fmtMins(perDay*30)}/month</span></p>
+                <p className="text-[10px]" style={{color:V.faint}}>{e.sessions} session{e.sessions!==1?"s":""} · <span style={{color:V.muted}}>~{(()=>{const w=perDay*7,mo=perDay*30;if(mo>=60)return`${fmtMins(mo)}/month`;if(w>=60)return`${fmtMins(w)}/week`;return`${fmtMins(perDay)}/day`;})()}</span> at this pace</p>
               </div>
             </div>);
           })}</div>
