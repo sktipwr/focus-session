@@ -232,8 +232,12 @@ export default function Home() {
             {/* Edit/Delete — always visible, subtle */}
             {editMode && (
               <div className="flex gap-1">
-                <button onClick={()=>setEditingId(task.id)} className="p-1.5 rounded-md transition-colors hover:opacity-80" style={{color:V.faint}} title="Edit"><svg width="11" height="11" viewBox="0 0 16 16" fill="none"><path d="M11.5 1.5l3 3L5 14H2v-3L11.5 1.5z" stroke="currentColor" strokeWidth="1.5"/></svg></button>
-                <button onClick={()=>delTask(task.id)} className="p-1.5 rounded-md transition-colors hover:opacity-80" style={{color:"#d44"}} title="Delete"><svg width="11" height="11" viewBox="0 0 16 16" fill="none"><path d="M4 4l8 8M12 4l-8 8" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"/></svg></button>
+                <button onClick={()=>setEditingId(task.id)} className="flex items-center gap-1 px-2 py-1 rounded-md text-[10px] transition-colors hover:opacity-80" style={{color:V.muted,background:V.surfaceHover}}>
+                  <svg width="10" height="10" viewBox="0 0 16 16" fill="none"><path d="M11.5 1.5l3 3L5 14H2v-3L11.5 1.5z" stroke="currentColor" strokeWidth="1.5"/></svg>Edit
+                </button>
+                <button onClick={()=>delTask(task.id)} className="flex items-center gap-1 px-2 py-1 rounded-md text-[10px] transition-colors hover:opacity-80" style={{color:"#d44",background:"rgba(221,68,68,0.08)"}}>
+                  <svg width="10" height="10" viewBox="0 0 16 16" fill="none"><path d="M4 4l8 8M12 4l-8 8" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"/></svg>Del
+                </button>
               </div>
             )}
             {/* Action button */}
