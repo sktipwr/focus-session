@@ -1,11 +1,11 @@
 {
-  "name": "Non-Negotiables",
-  "short_name": "NN",
-  "description": "Your daily non-negotiable tasks — no excuses",
+  "name": "Focusum",
+  "short_name": "Focusum",
+  "description": "Your daily non-negotiables — no excuses",
   "start_url": "/",
   "display": "standalone",
-  "background_color": "#090b10",
-  "theme_color": "#090b10",
+  "background_color": "#e8d44d",
+  "theme_color": "#e8d44d",
   "icons": [
     {
       "src": "/icon-192.png",

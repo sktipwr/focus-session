@@ -3,13 +3,14 @@ import WaterOverlay from "./water-overlay";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "Non-Negotiables",
-  description: "Your daily non-negotiable tasks — no excuses",
+  title: "Focusum",
+  description: "Your daily non-negotiables — no excuses",
   manifest: "/manifest.json",
+  icons: { icon: "/favicon.ico", apple: "/icon-192.png" },
   appleWebApp: {
     capable: true,
     statusBarStyle: "black-translucent",
-    title: "Focus",
+    title: "Focusum",
   },
 };
 
