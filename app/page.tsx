@@ -81,12 +81,56 @@ function TimerRing({progress,size=220,stroke=10,overtime=false}:{progress:number
   return (<svg width={size} height={size} className="transform -rotate-90"><defs><linearGradient id="gt" x1="0%" y1="0%" x2="100%" y2="100%"><stop offset="0%" stopColor={V.accent}/><stop offset="50%" stopColor="var(--color-accent-gradient-mid)"/><stop offset="100%" stopColor="var(--color-accent-gradient-end)"/></linearGradient><linearGradient id="go" x1="0%" y1="0%" x2="100%" y2="100%"><stop offset="0%" stopColor={V.success}/><stop offset="100%" stopColor={V.warning}/></linearGradient></defs><circle cx={size/2} cy={size/2} r={r} fill="none" stroke={V.ringTrack} strokeWidth={stroke}/><circle cx={size/2} cy={size/2} r={r} fill="none" stroke={overtime?"rgba(106,191,64,0.08)":V.accentSoft} strokeWidth={stroke+14} strokeDasharray={c} strokeDashoffset={off} strokeLinecap="round" className="transition-all duration-1000 ease-linear"/><circle cx={size/2} cy={size/2} r={r} fill="none" stroke={`url(#${overtime?"go":"gt"})`} strokeWidth={stroke} strokeDasharray={c} strokeDashoffset={off} strokeLinecap="round" className="transition-all duration-1000 ease-linear"/></svg>);
 }
 
-// ── Week strip ──
-function WeekStrip() {
+// ── Week strip with history dots ──
+function WeekStrip({ history, todayCompleted, todayTotal }: { history: DayRecord[]; todayCompleted: number; todayTotal: number }) {
   const today = new Date();
-  const days: {label:string;date:number;isToday:boolean}[] = [];
-  for (let i=-3;i<=3;i++) { const d=new Date(today);d.setDate(today.getDate()+i); days.push({label:d.toLocaleDateString("en-US",{weekday:"short"}),date:d.getDate(),isToday:i===0}); }
-  return (<div className="flex justify-between px-2">{days.map((d,i)=>(<div key={i} className="flex flex-col items-center gap-1"><span className="text-[10px]" style={{color:d.isToday?V.accent:V.faint}}>{d.label}</span><div className="w-9 h-9 rounded-full flex items-center justify-center text-sm font-semibold" style={{background:d.isToday?V.accent:"transparent",color:d.isToday?V.inverse:V.muted}}>{d.date}</div></div>))}</div>);
+  const histMap = new Map(history.map((d) => [d.date, d]));
+  const days: { label: string; date: number; dateStr: string; isToday: boolean; isFuture: boolean; completed: number; total: number }[] = [];
+  for (let i = -3; i <= 3; i++) {
+    const d = new Date(today); d.setDate(today.getDate() + i);
+    const ds = d.toISOString().slice(0, 10);
+    const rec = histMap.get(ds);
+    const isToday = i === 0;
+    const isFuture = i > 0;
+    days.push({
+      label: d.toLocaleDateString("en-US", { weekday: "short" }),
+      date: d.getDate(), dateStr: ds, isToday, isFuture,
+      completed: isToday ? todayCompleted : (rec?.completedCount || 0),
+      total: isToday ? todayTotal : (rec?.totalCount || 0),
+    });
+  }
+  return (
+    <div className="flex justify-between px-2">
+      {days.map((d, i) => {
+        const hasActivity = d.completed > 0;
+        const ratio = d.total > 0 ? d.completed / d.total : 0;
+        return (
+          <div key={i} className="flex flex-col items-center gap-1">
+            <span className="text-[10px]" style={{ color: d.isToday ? V.accent : V.faint }}>{d.label}</span>
+            <div className="relative">
+              <div className="w-9 h-9 rounded-full flex items-center justify-center text-sm font-semibold transition-all"
+                style={{
+                  background: d.isToday ? V.accent : hasActivity ? V.accentSoft : "transparent",
+                  color: d.isToday ? V.inverse : hasActivity ? V.accent : d.isFuture ? V.faint : V.muted,
+                  border: hasActivity && !d.isToday ? `1px solid ${V.borderActive}` : "none",
+                }}>
+                {d.date}
+              </div>
+              {/* Completion dot */}
+              {hasActivity && !d.isToday && (
+                <div className="absolute -bottom-1 left-1/2 -translate-x-1/2 w-1.5 h-1.5 rounded-full"
+                  style={{ background: ratio >= 1 ? V.success : ratio > 0.5 ? V.accent : V.warning }} />
+              )}
+              {d.isToday && todayCompleted > 0 && (
+                <div className="absolute -bottom-1 left-1/2 -translate-x-1/2 w-1.5 h-1.5 rounded-full"
+                  style={{ background: ratio >= 1 ? V.success : V.accent }} />
+              )}
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
 }
 
 // ── Rolling time display — only changed digits animate ──
@@ -168,7 +212,7 @@ export default function Home() {
         <div><p className="font-semibold text-sm mb-0.5">Track Your Progress</p><p className="text-xs" style={{color:V.muted}}>{cc}/{tasks.length} tasks complete today</p>{streak>0&&<p className="text-xs mt-1" style={{color:V.accent}}>&#128293; {streak} day streak</p>}</div>
       </div>}
 
-      {!editMode&&<div className="mb-5"><WeekStrip/></div>}
+      {!editMode&&<div className="mb-5"><WeekStrip history={history} todayCompleted={cc} todayTotal={tasks.length}/></div>}
       {editMode&&<p className="text-xs italic text-center mb-4" style={{color:V.faint}}>Your non-negotiables. No excuses.</p>}
 
       <div className="space-y-2.5 stagger">
@@ -176,11 +220,18 @@ export default function Home() {
           <div className="flex items-center gap-3 p-3.5 rounded-xl animate-fade-up card-lift" style={{background:task.status==="done"?V.surfaceSuccess:V.surface,border:`1px solid ${task.status==="done"?V.borderSuccess:V.border}`,opacity:task.status==="skipped"?0.4:1}}>
             <span className="text-xl">{task.emoji}</span>
             <div className="flex-1 min-w-0"><p className="text-sm font-medium truncate" style={{color:task.status==="done"&&!task.repeatable?V.muted:V.text,textDecoration:task.status==="done"&&!task.repeatable?"line-through":"none"}}>{task.label}</p><p className="text-xs" style={{color:V.faint}}>{task.duration/60} min{task.completedCount>0&&<span style={{color:V.success}}> &#10003; {task.completedCount}x</span>}</p></div>
-            {editMode?<div className="flex gap-1.5">{task.isCustom&&<button onClick={()=>setEditingId(task.id)} className="p-1.5" style={{color:V.muted}}><svg width="12" height="12" viewBox="0 0 16 16" fill="none"><path d="M11.5 1.5l3 3L5 14H2v-3L11.5 1.5z" stroke="currentColor" strokeWidth="1.5"/></svg></button>}<button onClick={()=>delTask(task.id)} className="p-1.5" style={{color:"#ef4444"}}><svg width="12" height="12" viewBox="0 0 16 16" fill="none"><path d="M2 4h12M5.3 4V2.7a1.3 1.3 0 011.4-1.4h2.6a1.3 1.3 0 011.4 1.4V4m2 0v9.3a1.3 1.3 0 01-1.4 1.4H4.7a1.3 1.3 0 01-1.4-1.4V4h9.4z" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round"/></svg></button></div>
-            :task.status==="done"&&task.repeatable?<button onClick={()=>repeatTask(idx)} className="text-xs font-medium px-2.5 py-1 rounded-full" style={{background:V.accentSoft,color:V.accent}}>Again</button>
+            {/* Edit/Delete — always visible, subtle */}
+            {editMode && (
+              <div className="flex gap-1">
+                {task.isCustom && <button onClick={()=>setEditingId(task.id)} className="p-1.5 rounded-md transition-colors hover:opacity-80" style={{color:V.faint}} title="Edit"><svg width="11" height="11" viewBox="0 0 16 16" fill="none"><path d="M11.5 1.5l3 3L5 14H2v-3L11.5 1.5z" stroke="currentColor" strokeWidth="1.5"/></svg></button>}
+                <button onClick={()=>delTask(task.id)} className="p-1.5 rounded-md transition-colors hover:opacity-80" style={{color:"#d44"}} title="Delete"><svg width="11" height="11" viewBox="0 0 16 16" fill="none"><path d="M4 4l8 8M12 4l-8 8" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"/></svg></button>
+              </div>
+            )}
+            {/* Action button */}
+            {!editMode && (task.status==="done"&&task.repeatable?<button onClick={()=>repeatTask(idx)} className="text-xs font-medium px-2.5 py-1 rounded-full" style={{background:V.accentSoft,color:V.accent}}>Again</button>
             :task.status==="done"?<button onClick={()=>untickTask(idx)} className="text-base" style={{color:V.success}}>&#10003;</button>
             :task.status==="skipped"?<span className="text-xs" style={{color:V.muted}}>skipped</span>
-            :<button onClick={()=>startTask(idx)} className="btn-press text-xs font-semibold px-3 py-1.5 rounded-full" style={{background:V.accent,color:V.inverse}}>Start</button>}
+            :<button onClick={()=>startTask(idx)} className="btn-press text-xs font-semibold px-3 py-1.5 rounded-full" style={{background:V.accent,color:V.inverse}}>Start</button>)}
           </div>}</div>))}
         {editMode&&!showAdd&&<button onClick={()=>setShowAdd(true)} className="w-full p-3.5 rounded-xl border-2 border-dashed text-xs font-medium animate-fade-up" style={{borderColor:V.border,color:V.muted}}>+ Add Session</button>}
         {showAdd&&<TaskAddForm onAdd={addTask} onCancel={()=>setShowAdd(false)}/>}
