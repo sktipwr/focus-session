@@ -9,23 +9,22 @@ interface WaterProps {
 
 export default function Water({
   color = "#7b93ff",
-  opacity = 0.12,
+  opacity = 0.15,
 }: WaterProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
-  const tiltRef = useRef({ x: 0, y: 0 }); // x: left-right, y: front-back
+  const tiltRef = useRef({ x: 0, y: 0 });
   const smoothRef = useRef({ x: 0, y: 0 });
   const [hasPermission, setHasPermission] = useState(false);
   const animRef = useRef<number>(0);
 
   const wavesRef = useRef([
-    { amplitude: 3, frequency: 0.012, speed: 0.008, phase: 0 },
-    { amplitude: 2, frequency: 0.02, speed: -0.006, phase: 2 },
-    { amplitude: 1.2, frequency: 0.035, speed: 0.01, phase: 4 },
+    { amplitude: 4, frequency: 0.015, speed: 0.009, phase: 0 },
+    { amplitude: 2.5, frequency: 0.025, speed: -0.006, phase: 2 },
+    { amplitude: 1.5, frequency: 0.04, speed: 0.012, phase: 4 },
   ]);
 
   useEffect(() => {
     const handleOrientation = (e: DeviceOrientationEvent) => {
-      // gamma: left-right (-90 to 90), beta: front-back (-180 to 180)
       tiltRef.current = {
         x: Math.max(-1, Math.min(1, (e.gamma || 0) / 30)),
         y: Math.max(-1, Math.min(1, ((e.beta || 0) - 45) / 30)),
@@ -75,10 +74,7 @@ export default function Water({
     const ctx = canvas.getContext("2d");
     if (!ctx) return;
 
-    const resize = () => {
-      canvas.width = window.innerWidth;
-      canvas.height = window.innerHeight;
-    };
+    const resize = () => { canvas.width = window.innerWidth; canvas.height = window.innerHeight; };
     resize();
     window.addEventListener("resize", resize);
 
@@ -90,150 +86,109 @@ export default function Water({
       const lerp = 0.025;
       smoothRef.current.x += (tiltRef.current.x - smoothRef.current.x) * lerp;
       smoothRef.current.y += (tiltRef.current.y - smoothRef.current.y) * lerp;
-      const tx = smoothRef.current.x; // -1 left, +1 right
-      const ty = smoothRef.current.y; // -1 top, +1 bottom
+      const tx = smoothRef.current.x;
+      const ty = smoothRef.current.y;
 
       const waves = wavesRef.current;
       waves.forEach((w) => { w.phase += w.speed; });
 
-      // Water level calculation:
-      // Think of the screen as a container. The "water" always has
-      // the same volume. Gravity pulls it toward the lowest corner.
+      // Determine which single edge the water pools on.
+      // Like a real glass: water flows to the lowest point.
+      // Default (no tilt): bottom.
+      // Tilt right (tx > threshold): right edge.
+      // Tilt left (tx < -threshold): left edge.
+      // Tilt forward (ty < -threshold): top edge.
       //
-      // We compute for each pixel (x, y) how "deep" the water is there.
-      // depth = baseFill + tiltX_contribution + tiltY_contribution
-      //
-      // tiltX: when tx > 0, right side is lower → water pools right
-      // tiltY: when ty > 0, bottom is lower → water pools at bottom
-      //        when ty < 0, top is lower → water flows to top
-      //
-      // xNorm: -1 (left) to +1 (right)
-      // yNorm: -1 (top) to +1 (bottom)
-      //
-      // Water depth at (x,y) = base + tx * xNorm * strength + ty * yNorm * strength
+      // Use the dominant axis to pick ONE edge.
+      const absX = Math.abs(tx);
+      const absY = Math.abs(ty);
+      const threshold = 0.15;
 
-      const baseWaterLevel = 0.15; // 15% of screen covered when flat
-      const tiltStrength = 0.35; // how much tilt shifts the water
+      type Edge = "bottom" | "top" | "left" | "right";
+      let edge: Edge = "bottom";
+      let strength = 0.5 + Math.max(absX, absY) * 0.5; // 0.5 to 1.0
+
+      if (absX > absY && absX > threshold) {
+        edge = tx > 0 ? "right" : "left";
+        strength = 0.5 + absX * 0.5;
+      } else if (absY > absX && absY > threshold) {
+        edge = ty > 0 ? "bottom" : "top";
+        strength = 0.5 + absY * 0.5;
+      }
+
+      // Water depth: how far into the screen the water extends
+      const maxDepth = edge === "bottom" || edge === "top" ? height * 0.12 : width * 0.1;
+      const depth = maxDepth * strength;
 
       for (let layer = 0; layer < 2; layer++) {
-        const layerOpacity = opacity - layer * 0.03;
+        const layerOpacity = opacity - layer * 0.04;
+        const layerShift = layer * 4;
+
         ctx.beginPath();
 
-        // We need to trace the water surface contour around the screen.
-        // The water fills from the edges inward based on gravity.
-        // For each edge, compute the water height at that point.
-
-        // Helper: compute water depth at normalized position
-        const waterDepth = (xNorm: number, yNorm: number): number => {
-          // Tilt contribution: positive means more water here
-          const tiltContrib = tx * xNorm * tiltStrength + ty * yNorm * tiltStrength;
-          return baseWaterLevel + tiltContrib;
-        };
-
-        // Draw water on all 4 edges based on gravity
-        // Bottom edge
-        const bottomPoints: [number, number][] = [];
-        for (let x = 0; x <= width; x += 3) {
-          const xNorm = (x / width) * 2 - 1;
-          const depth = waterDepth(xNorm, 1); // bottom edge yNorm = 1
-          if (depth > 0) {
+        if (edge === "bottom") {
+          ctx.moveTo(0, height);
+          for (let x = 0; x <= width; x += 2) {
             let waveY = 0;
             waves.forEach((w) => { waveY += Math.sin(x * w.frequency + w.phase + layer) * w.amplitude; });
-            bottomPoints.push([x, height - depth * height * 0.7 + waveY]);
+            // Glass tilt slope: water is deeper on the side gravity pulls toward
+            const slope = tx * ((x / width) - 0.5) * depth * 0.6;
+            ctx.lineTo(x, height - depth - layerShift + waveY + slope);
           }
-        }
-
-        // Top edge
-        const topPoints: [number, number][] = [];
-        for (let x = 0; x <= width; x += 3) {
-          const xNorm = (x / width) * 2 - 1;
-          const depth = waterDepth(xNorm, -1); // top edge yNorm = -1
-          if (depth > 0) {
-            let waveY = 0;
-            waves.forEach((w) => { waveY += Math.sin(x * w.frequency + w.phase + layer + 1) * w.amplitude; });
-            topPoints.push([x, depth * height * 0.7 + waveY]);
-          }
-        }
-
-        // Left edge
-        const leftPoints: [number, number][] = [];
-        for (let y = 0; y <= height; y += 3) {
-          const yNorm = (y / height) * 2 - 1;
-          const depth = waterDepth(-1, yNorm); // left edge xNorm = -1
-          if (depth > 0) {
-            let waveY = 0;
-            waves.forEach((w) => { waveY += Math.sin(y * w.frequency * 0.8 + w.phase + layer + 2) * w.amplitude; });
-            leftPoints.push([depth * width * 0.5 + waveY, y]);
-          }
-        }
-
-        // Right edge
-        const rightPoints: [number, number][] = [];
-        for (let y = 0; y <= height; y += 3) {
-          const yNorm = (y / height) * 2 - 1;
-          const depth = waterDepth(1, yNorm); // right edge xNorm = 1
-          if (depth > 0) {
-            let waveY = 0;
-            waves.forEach((w) => { waveY += Math.sin(y * w.frequency * 0.8 + w.phase + layer + 3) * w.amplitude; });
-            rightPoints.push([width - depth * width * 0.5 + waveY, y]);
-          }
-        }
-
-        // Draw bottom water
-        if (bottomPoints.length > 1) {
-          ctx.beginPath();
-          ctx.moveTo(0, height);
-          bottomPoints.forEach(([x, y]) => ctx.lineTo(x, y));
           ctx.lineTo(width, height);
           ctx.closePath();
-          const grad = ctx.createLinearGradient(0, height, 0, height * 0.5);
+          const grad = ctx.createLinearGradient(0, height, 0, height - depth * 2);
           grad.addColorStop(0, hexToRgba(color, layerOpacity));
-          grad.addColorStop(1, hexToRgba(color, layerOpacity * 0.3));
+          grad.addColorStop(1, hexToRgba(color, 0));
           ctx.fillStyle = grad;
-          ctx.fill();
-        }
 
-        // Draw top water
-        if (topPoints.length > 1) {
-          ctx.beginPath();
+        } else if (edge === "top") {
           ctx.moveTo(0, 0);
-          topPoints.forEach(([x, y]) => ctx.lineTo(x, y));
+          for (let x = 0; x <= width; x += 2) {
+            let waveY = 0;
+            waves.forEach((w) => { waveY += Math.sin(x * w.frequency + w.phase + layer) * w.amplitude; });
+            const slope = tx * ((x / width) - 0.5) * depth * 0.6;
+            ctx.lineTo(x, depth + layerShift + waveY + slope);
+          }
           ctx.lineTo(width, 0);
           ctx.closePath();
-          const grad = ctx.createLinearGradient(0, 0, 0, height * 0.5);
+          const grad = ctx.createLinearGradient(0, 0, 0, depth * 2);
           grad.addColorStop(0, hexToRgba(color, layerOpacity));
-          grad.addColorStop(1, hexToRgba(color, layerOpacity * 0.3));
+          grad.addColorStop(1, hexToRgba(color, 0));
           ctx.fillStyle = grad;
-          ctx.fill();
-        }
 
-        // Draw left water
-        if (leftPoints.length > 1) {
-          ctx.beginPath();
+        } else if (edge === "left") {
           ctx.moveTo(0, 0);
-          leftPoints.forEach(([x, y]) => ctx.lineTo(x, y));
+          for (let y = 0; y <= height; y += 2) {
+            let waveX = 0;
+            waves.forEach((w) => { waveX += Math.sin(y * w.frequency * 0.7 + w.phase + layer) * w.amplitude; });
+            const slope = ty * ((y / height) - 0.5) * depth * 0.6;
+            ctx.lineTo(depth + layerShift + waveX + slope, y);
+          }
           ctx.lineTo(0, height);
           ctx.closePath();
-          const grad = ctx.createLinearGradient(0, 0, width * 0.5, 0);
+          const grad = ctx.createLinearGradient(0, 0, depth * 2, 0);
           grad.addColorStop(0, hexToRgba(color, layerOpacity));
-          grad.addColorStop(1, hexToRgba(color, layerOpacity * 0.3));
+          grad.addColorStop(1, hexToRgba(color, 0));
           ctx.fillStyle = grad;
-          ctx.fill();
-        }
 
-        // Draw right water
-        if (rightPoints.length > 1) {
-          ctx.beginPath();
+        } else if (edge === "right") {
           ctx.moveTo(width, 0);
-          rightPoints.forEach(([x, y]) => ctx.lineTo(x, y));
+          for (let y = 0; y <= height; y += 2) {
+            let waveX = 0;
+            waves.forEach((w) => { waveX += Math.sin(y * w.frequency * 0.7 + w.phase + layer) * w.amplitude; });
+            const slope = ty * ((y / height) - 0.5) * depth * 0.6;
+            ctx.lineTo(width - depth - layerShift + waveX + slope, y);
+          }
           ctx.lineTo(width, height);
           ctx.closePath();
-          const grad = ctx.createLinearGradient(width, 0, width * 0.5, 0);
+          const grad = ctx.createLinearGradient(width, 0, width - depth * 2, 0);
           grad.addColorStop(0, hexToRgba(color, layerOpacity));
-          grad.addColorStop(1, hexToRgba(color, layerOpacity * 0.3));
+          grad.addColorStop(1, hexToRgba(color, 0));
           ctx.fillStyle = grad;
-          ctx.fill();
         }
+
+        ctx.fill();
       }
 
       animRef.current = requestAnimationFrame(draw);
@@ -247,11 +202,7 @@ export default function Water({
   }, [color, opacity]);
 
   return (
-    <canvas
-      ref={canvasRef}
-      className="fixed inset-0 pointer-events-none"
-      style={{ zIndex: 50 }}
-    />
+    <canvas ref={canvasRef} className="fixed inset-0 pointer-events-none" style={{ zIndex: 50 }} />
   );
 }
 

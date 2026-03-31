@@ -795,59 +795,90 @@ export default function Home() {
   // ── TIMER ──
   if (view === "timer" && activeTask) {
     const timerMsg = TIMER_MSGS[activeIdx % TIMER_MSGS.length];
+    const timeStr = overtime
+      ? "+" + formatTime(activeTask.elapsed - activeTask.duration)
+      : formatTime(remaining);
+
     return (
-      <div className="max-w-md mx-auto px-4 py-8 flex flex-col items-center justify-center min-h-screen">
-        <div className="mb-4 px-4 py-2 rounded-lg text-center animate-fade-down"
+      <div className="max-w-md mx-auto px-4 flex flex-col items-center justify-center min-h-screen">
+        {/* DND — compact top bar */}
+        <div className="mb-3 px-3 py-1.5 rounded-full text-center animate-fade-down"
           style={{ background: V.warningBg, border: `1px solid ${V.warningBorder}` }}>
-          <p className="text-xs font-medium" style={{ color: V.warning }}>&#128244; Turn on Do Not Disturb for zero distractions</p>
+          <p className="text-[10px] font-medium" style={{ color: V.warning }}>&#128244; DND for zero distractions</p>
         </div>
-        <img src={overtime ? randomSticker("fire") : running ? randomSticker("focus") : randomSticker("lazy")}
-          alt="" className={`w-12 h-12 mb-2 ${overtime ? "animate-wiggle" : "animate-sticker-drop"}`} key={`${running}-${overtime}`} />
-        <div className="text-center mb-2 animate-scale-in"><span className="text-4xl">{activeTask.emoji}</span></div>
-        <h2 className="text-xl font-semibold mb-1 animate-fade-up">{activeTask.label}</h2>
-        <p className="text-sm mb-8 animate-fade-up" style={{ color: V.muted, animationDelay: "0.1s" }}>Session {activeIdx + 1} of {tasks.length}</p>
-        <div className={`relative mb-8 ${overtime ? "timer-glow-overtime" : "timer-glow"}`}>
-          <TimerRing progress={overtime ? 1 : progress} overtime={overtime} />
+
+        {/* Task info — compact */}
+        <div className="flex items-center gap-2 mb-6 animate-fade-up">
+          <span className="text-2xl">{activeTask.emoji}</span>
+          <div>
+            <h2 className="text-base font-semibold leading-tight">{activeTask.label}</h2>
+            <p className="text-xs" style={{ color: V.muted }}>{activeIdx + 1} of {tasks.length}</p>
+          </div>
+          <img src={overtime ? randomSticker("fire") : running ? randomSticker("focus") : randomSticker("lazy")}
+            alt="" className={`w-8 h-8 ml-1 ${overtime ? "animate-wiggle" : ""}`} key={`${running}-${overtime}`} />
+        </div>
+
+        {/* Timer ring — centered and breathing */}
+        <div className={`relative mb-8 ring-breathe ${overtime ? "timer-glow-overtime" : "timer-glow"}`}>
+          <TimerRing progress={overtime ? 1 : progress} size={240} stroke={10} overtime={overtime} />
           <div className="absolute inset-0 flex flex-col items-center justify-center">
-            {overtime ? (
-              <>
-                <span className="text-xs font-medium mb-1" style={{ color: V.success }}>OVERTIME</span>
-                <span className="text-4xl font-mono font-bold tracking-wider" style={{ color: V.success }}>+{formatTime(activeTask.elapsed - activeTask.duration)}</span>
-                <span className="text-xs mt-1" style={{ color: V.muted }}>keep going or finish</span>
-              </>
-            ) : (
-              <>
-                <span className="text-4xl font-mono font-bold tracking-wider">{formatTime(remaining)}</span>
-                <span className="text-xs mt-1" style={{ color: V.muted }}>{running ? "focusing" : "paused"}</span>
-              </>
+            {overtime && (
+              <span className="text-[10px] font-bold tracking-widest mb-1 uppercase" style={{ color: V.success }}>Overtime</span>
             )}
+            {/* Rolling digits */}
+            <div className="overflow-hidden" style={{ height: "3rem" }}>
+              <div className="font-mono font-bold tracking-wider digit-roll" key={timeStr}
+                style={{ fontSize: "2.75rem", lineHeight: "3rem", color: overtime ? V.success : V.text }}>
+                {timeStr}
+              </div>
+            </div>
+            <span className="text-xs mt-1.5" style={{ color: V.muted }}>
+              {overtime ? "keep going or finish" : running ? "focusing" : "paused"}
+            </span>
           </div>
         </div>
+
         {overtime && (
-          <div className="text-center mb-4">
-            <p className="text-sm font-medium" style={{ color: V.success }}>Time&apos;s up! You&apos;re in the zone — keep going or wrap up.</p>
+          <p className="text-sm font-medium mb-5 animate-fade-up" style={{ color: V.success }}>
+            You&apos;re in the zone — finish when ready
+          </p>
+        )}
+
+        {/* Buttons — smart weight hierarchy */}
+        {overtime ? (
+          /* Overtime: Finish is the hero, Pause is secondary */
+          <div className="flex flex-col items-center gap-3 w-full max-w-xs">
+            <button onClick={finishTask}
+              className="btn-press w-full py-3.5 rounded-xl font-semibold text-base transition-all"
+              style={{ background: V.success, color: V.inverse }}>
+              Finish Session
+            </button>
+            <button onClick={() => setRunning((r) => !r)}
+              className="btn-press py-2 text-sm transition-all"
+              style={{ color: V.muted }}>
+              {running ? "Pause" : "Resume"}
+            </button>
+          </div>
+        ) : (
+          /* Normal: Pause/Resume is the hero, Skip & Done are secondary */
+          <div className="flex flex-col items-center gap-3 w-full max-w-xs">
+            <button onClick={() => setRunning((r) => !r)}
+              className="btn-press w-full py-3.5 rounded-xl font-semibold text-base transition-all"
+              style={{ background: running ? V.accent : V.accent, color: V.inverse }}>
+              {running ? "Pause" : "Resume"}
+            </button>
+            <div className="flex gap-6">
+              <button onClick={skipTask} className="btn-press py-2 text-sm transition-all" style={{ color: V.faint }}>
+                Skip
+              </button>
+              <button onClick={finishTask} className="btn-press py-2 text-sm font-medium transition-all" style={{ color: V.success }}>
+                Mark Done
+              </button>
+            </div>
           </div>
         )}
-        <div className="flex gap-3">
-          {!overtime && (
-            <button onClick={skipTask} className="btn-press px-5 py-2.5 rounded-lg text-sm transition-all"
-              style={{ border: `1px solid ${V.border}`, color: V.muted }}>Skip</button>
-          )}
-          <button onClick={() => setRunning((r) => !r)}
-            className="btn-press px-8 py-2.5 rounded-lg font-medium text-sm transition-all"
-            style={{ background: running ? V.accentSoft : V.accent, color: running ? V.accent : V.inverse }}>
-            {running ? "Pause" : "Resume"}
-          </button>
-          <button onClick={finishTask}
-            className="btn-press px-5 py-2.5 rounded-lg font-medium text-sm transition-all"
-            style={overtime
-              ? { background: V.success, color: V.inverse }
-              : { border: `1px solid ${V.borderSuccess}`, color: V.success }
-            }>
-            {overtime ? "Finish" : "Done"}
-          </button>
-        </div>
-        <p className="mt-8 text-sm italic text-center max-w-xs" style={{ color: V.faint }}>{timerMsg}</p>
+
+        <p className="mt-6 text-xs italic text-center max-w-xs" style={{ color: V.faint }}>{timerMsg}</p>
       </div>
     );
   }
