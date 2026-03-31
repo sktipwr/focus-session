@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback, useRef } from "react";
 import confetti from "canvas-confetti";
-import { logSession, syncDaySummary } from "@/lib/supabase";
+import { logSession, syncDaySummary, createUser, getUser, getAllUsers, recoverUser, getTeamDaily, getTeamStreaks, type AppUser, type TeamDayEntry, type TeamStreak } from "@/lib/supabase";
 
 // ── CSS var shorthand ──
 const V = {
@@ -41,7 +41,15 @@ const BUILTIN_TASKS: TaskTemplate[] = [
 ];
 
 // ── localStorage ──
-const CK = "nn-custom-tasks", HK = "nn-hidden-tasks", TK = "nn-today", HIS = "nn-history", OK = "nn-overrides";
+const CK = "nn-custom-tasks", HK = "nn-hidden-tasks", TK = "nn-today", HIS = "nn-history", OK = "nn-overrides", UK = "nn-user";
+const USER_EMOJIS = ["\uD83D\uDE0E", "\uD83E\uDD29", "\uD83E\uDD16", "\uD83D\uDC7B", "\uD83E\uDDD9", "\uD83E\uDDDE", "\uD83E\uDDB8", "\uD83E\uDD8A", "\uD83D\uDC3C", "\uD83E\uDD85", "\uD83C\uDF4B", "\uD83C\uDF1F"];
+
+function loadUser(): { id: string; name: string; emoji: string } | null {
+  try { const u = localStorage.getItem(UK); return u ? JSON.parse(u) : null; } catch { return null; }
+}
+function saveUser(u: { id: string; name: string; emoji: string }) {
+  localStorage.setItem(UK, JSON.stringify(u));
+}
 function loadC(): TaskTemplate[] { try { return JSON.parse(localStorage.getItem(CK)||"[]"); } catch { return []; } }
 function saveC(t: TaskTemplate[]) { localStorage.setItem(CK, JSON.stringify(t)); }
 function loadH(): string[] { try { return JSON.parse(localStorage.getItem(HK)||"[]"); } catch { return []; } }
@@ -164,11 +172,16 @@ export default function Home() {
   const [activeIdx,setActiveIdx]=useState(-1);
   const [mounted,setMounted]=useState(false);
   const [splash,setSplash]=useState(true);
+  const [userSetup,setUserSetup]=useState(false); // show user setup after splash
+  const [currentUser,setCurrentUser]=useState<{id:string;name:string;emoji:string}|null>(null);
   const [history,setHistory]=useState<DayRecord[]>([]);
   const [editMode,setEditMode]=useState(false);
   const [editingId,setEditingId]=useState<string|null>(null);
   const [showAdd,setShowAdd]=useState(false);
   const [installPrompt,setInstallPrompt]=useState<Event|null>(null);
+  const [teamData,setTeamData]=useState<TeamDayEntry[]>([]);
+  const [teamStreaks,setTeamStreaks]=useState<TeamStreak[]>([]);
+  const [allUsers,setAllUsers]=useState<AppUser[]>([]);
   const iRef=useRef<ReturnType<typeof setInterval>|null>(null);
   // Wall-clock tracking: store when timer started and elapsed-at-pause
   const timerStartRef=useRef<number>(0); // Date.now() when timer started/resumed
@@ -183,6 +196,14 @@ export default function Home() {
   // ── Request notification permission on mount ──
   useEffect(()=>{
     setDayData(loadToday());setHistory(loadHistory());setMounted(true);
+    // Load user
+    const u = loadUser();
+    if (u) { setCurrentUser(u); }
+    else { setUserSetup(true); }
+    // Load team data
+    getTeamDaily(7).then(setTeamData);
+    getTeamStreaks().then(setTeamStreaks);
+    getAllUsers().then(setAllUsers);
     if("serviceWorker"in navigator)navigator.serviceWorker.register("/sw.js").catch(()=>{});
     // Request notification permission
     if("Notification"in window&&Notification.permission==="default") Notification.requestPermission();
@@ -193,7 +214,7 @@ export default function Home() {
     return()=>{window.removeEventListener("beforeinstallprompt",h);clearInterval(ti);};
   },[]);
 
-  useEffect(()=>{if(!mounted)return;saveToday(dayData);if(dayData.tasks.some(t=>t.status==="done"))syncDaySummary(dayData.date,dayData.tasks.map(t=>({id:t.id,label:t.label,status:t.status,completedCount:t.completedCount,duration:t.duration})));},[dayData,mounted]);
+  useEffect(()=>{if(!mounted)return;saveToday(dayData);if(currentUser&&dayData.tasks.some(t=>t.status==="done"))syncDaySummary(currentUser.id,dayData.date,dayData.tasks.map(t=>({id:t.id,label:t.label,status:t.status,completedCount:t.completedCount,duration:t.duration})));},[dayData,mounted,currentUser]);
 
   // ── Wake Lock: keep screen on while timer is running ──
   useEffect(()=>{
@@ -265,7 +286,7 @@ export default function Home() {
       return s;
     });
   },[]);
-  const finishTask=useCallback(()=>{const task=tasks[activeIdx];logSession({task_id:task.id,task_label:task.label,duration_planned:task.duration,duration_actual:task.elapsed,completed_at:new Date().toISOString(),date:dayData.date,was_overtime:task.elapsed>task.duration});uT(p=>{const n=[...p],t={...n[activeIdx]};t.status="done";t.completedCount+=1;n[activeIdx]=t;return n;});setTs("success");fireConfetti();},[activeIdx,tasks,dayData.date,uT]);
+  const finishTask=useCallback(()=>{const task=tasks[activeIdx];if(currentUser)logSession({user_id:currentUser.id,task_id:task.id,task_label:task.label,duration_planned:task.duration,duration_actual:task.elapsed,completed_at:new Date().toISOString(),date:dayData.date,was_overtime:task.elapsed>task.duration});uT(p=>{const n=[...p],t={...n[activeIdx]};t.status="done";t.completedCount+=1;n[activeIdx]=t;return n;});setTs("success");fireConfetti();getTeamDaily(7).then(setTeamData);},[activeIdx,tasks,dayData.date,uT,currentUser]);
   const skipTask=useCallback(()=>{uT(p=>{const n=[...p];n[activeIdx]={...n[activeIdx],status:"skipped"};return n;});setTs("idle");setTab("home");},[activeIdx,uT]);
   const repeatTask=useCallback((i:number)=>{uT(p=>{const n=[...p];n[i]={...n[i],status:"pending",elapsed:0};return n;});},[uT]);
   const untickTask=useCallback((i:number)=>{uT(p=>{const n=[...p],t={...n[i]};t.status="pending";t.elapsed=0;t.completedCount=Math.max(0,t.completedCount-1);n[i]=t;return n;});},[uT]);
@@ -281,7 +302,10 @@ export default function Home() {
 
   if(!mounted)return<div className="flex items-center justify-center min-h-screen"><div style={{color:V.muted}}>Loading...</div></div>;
 
-  if(splash)return(<div className="flex flex-col items-center justify-center min-h-screen text-center px-4 cursor-pointer" onClick={()=>setSplash(false)}><img src="/gonchu.webp" alt="Ghochu" className="w-40 h-40 object-contain mb-4 animate-pop-in animate-float"/><img src={randomSticker("hype")} alt="" className="w-12 h-12 mb-4 animate-sticker-drop" style={{animationDelay:"0.3s"}}/><h1 className="text-3xl font-bold mb-2 animate-fade-up" style={{animationDelay:"0.4s"}}>Hey Gonchuuu</h1><p className="text-sm mb-8 animate-fade-up" style={{color:V.muted,animationDelay:"0.6s"}}>Let&apos;s crush your non-negotiables</p><p className="text-xs animate-pulse animate-fade-up" style={{color:V.faint,animationDelay:"0.8s"}}>tap to start</p></div>);
+  if(splash)return(<div className="flex flex-col items-center justify-center min-h-screen text-center px-4 cursor-pointer" onClick={()=>setSplash(false)}><img src="/gonchu.webp" alt="Ghochu" className="w-40 h-40 object-contain mb-4 animate-pop-in animate-float"/><img src={randomSticker("hype")} alt="" className="w-12 h-12 mb-4 animate-sticker-drop" style={{animationDelay:"0.3s"}}/><h1 className="text-3xl font-bold mb-2 animate-fade-up" style={{animationDelay:"0.4s"}}>Hey{currentUser?` ${currentUser.name}`:""}</h1><p className="text-sm mb-8 animate-fade-up" style={{color:V.muted,animationDelay:"0.6s"}}>Let&apos;s crush your non-negotiables</p><p className="text-xs animate-pulse animate-fade-up" style={{color:V.faint,animationDelay:"0.8s"}}>tap to start</p></div>);
+
+  // ── USER SETUP ──
+  if(userSetup&&!currentUser)return(<UserSetup onComplete={(u)=>{setCurrentUser(u);saveUser(u);setUserSetup(false);getAllUsers().then(setAllUsers);}} existingUsers={allUsers}/>);
 
   const at=activeIdx>=0?tasks[activeIdx]:null;
   const rem=at?Math.max(0,at.duration-at.elapsed):0;
@@ -296,7 +320,7 @@ export default function Home() {
     {/* ══ HOME ══ */}
     {tab==="home"&&(<div className="flex-1 px-4 pt-6 pb-4 animate-fade-up">
       <div className="flex items-center justify-between mb-5">
-        <div className="flex items-center gap-3"><img src="/gonchu.webp" alt="" className="w-10 h-10 rounded-full object-contain" style={{background:V.surfaceHover}}/><div><h1 className="font-semibold text-base">Hey, Gonchuuu!</h1><p className="text-xs" style={{color:V.muted}}>Let&apos;s begin your focus session</p></div></div>
+        <div className="flex items-center gap-3"><div className="w-10 h-10 rounded-full flex items-center justify-center text-xl" style={{background:V.surfaceHover}}>{currentUser?.emoji||"\uD83C\uDF4B"}</div><div><h1 className="font-semibold text-base">Hey, {currentUser?.name||"Gonchuuu"}!</h1><p className="text-xs" style={{color:V.muted}}>Let&apos;s begin your focus session</p></div></div>
         {!running&&<button onClick={()=>{setEditMode(!editMode);setEditingId(null);setShowAdd(false);}} className="w-9 h-9 rounded-full flex items-center justify-center" style={{background:editMode?V.accentSoft:V.surface,color:editMode?V.accent:V.muted,border:`1px solid ${editMode?V.borderActive:V.border}`}}><svg width="14" height="14" viewBox="0 0 16 16" fill="none"><path d="M11.5 1.5l3 3L5 14H2v-3L11.5 1.5z" stroke="currentColor" strokeWidth="1.5"/></svg></button>}
       </div>
 
@@ -376,6 +400,39 @@ export default function Home() {
       </div>
 
       {history.length>0&&<div><p className="text-xs font-medium mb-2" style={{color:V.muted}}>Recent</p><div className="space-y-2">{history.slice(0,5).map(day=>(<div key={day.date} className="flex items-center gap-3 p-3 rounded-xl" style={{background:V.surface,border:`1px solid ${V.border}`}}><div className="flex gap-1">{day.tasks.slice(0,4).map(t=><span key={t.id} className="text-sm">{t.emoji}</span>)}</div><div className="flex-1"><p className="text-xs font-medium">{fmtDate(day.date)}</p></div><p className="text-xs font-semibold" style={{color:V.success}}>{day.completedCount}/{day.totalCount}</p></div>))}</div></div>}
+
+      {/* ══ TEAM SECTION ══ */}
+      {(teamStreaks.length>0||teamData.length>0)&&<>
+        <div className="mt-6 mb-3 flex items-center gap-2"><div className="h-px flex-1" style={{background:V.border}}/><span className="text-[10px] font-bold tracking-widest uppercase" style={{color:V.faint}}>Team</span><div className="h-px flex-1" style={{background:V.border}}/></div>
+
+        {/* Team streaks */}
+        {teamStreaks.length>0&&<div className="space-y-2 mb-4">
+          {teamStreaks.map(u=>(
+            <div key={u.name} className="flex items-center gap-3 p-3 rounded-xl" style={{background:V.surface,border:`1px solid ${V.border}`}}>
+              <span className="text-xl">{u.emoji}</span>
+              <div className="flex-1"><p className="text-sm font-medium">{u.name}</p><p className="text-[10px]" style={{color:V.faint}}>Best: {u.best_streak} days</p></div>
+              <div className="text-right"><p className="text-sm font-bold" style={{color:V.accent}}>&#128293; {u.current_streak}</p><p className="text-[10px]" style={{color:V.faint}}>streak</p></div>
+            </div>
+          ))}
+        </div>}
+
+        {/* Team today */}
+        {teamData.length>0&&<div className="mb-4">
+          <p className="text-xs font-medium mb-2" style={{color:V.muted}}>Team Activity</p>
+          <div className="space-y-2">
+            {teamData.slice(0,10).map((e,i)=>(
+              <div key={`${e.date}-${e.name}-${i}`} className="flex items-center gap-3 p-3 rounded-xl" style={{background:V.surface,border:`1px solid ${V.border}`}}>
+                <span className="text-lg">{e.emoji}</span>
+                <div className="flex-1"><p className="text-xs font-medium">{e.name}</p><p className="text-[10px]" style={{color:V.faint}}>{fmtDate(e.date)}</p></div>
+                <div className="text-right"><p className="text-xs font-semibold" style={{color:V.success}}>{e.completed_tasks}/{e.total_tasks}</p><p className="text-[10px]" style={{color:V.faint}}>{e.total_minutes}m</p></div>
+              </div>
+            ))}
+          </div>
+        </div>}
+
+        {/* Switch user */}
+        <button onClick={()=>{localStorage.removeItem(UK);setCurrentUser(null);setUserSetup(true);}} className="w-full text-xs py-2 mt-2" style={{color:V.faint}}>Switch User</button>
+      </>}
     </div>)}
 
     {/* ══ BOTTOM TAB BAR ══ */}
@@ -390,6 +447,104 @@ export default function Home() {
 }
 
 // ── Forms ──
+// ── User Setup Screen ──
+function UserSetup({ onComplete, existingUsers }: { onComplete: (u: { id: string; name: string; emoji: string }) => void; existingUsers: AppUser[] }) {
+  const [name, setName] = useState("");
+  const [emoji, setEmoji] = useState("\uD83D\uDE0E");
+  const [mode, setMode] = useState<"new" | "existing">("new");
+  const [pin, setPin] = useState("");
+  const [recoverName, setRecoverName] = useState("");
+  const [error, setError] = useState("");
+  const [loading, setLoading] = useState(false);
+
+  const handleCreate = async () => {
+    if (!name.trim()) return;
+    setLoading(true);
+    const user = await createUser(name.trim(), emoji, pin || undefined);
+    if (user) {
+      onComplete({ id: user.id, name: user.name, emoji: user.emoji });
+    } else {
+      // Fallback: create local-only user
+      const localUser = { id: `local-${Date.now()}`, name: name.trim(), emoji };
+      onComplete(localUser);
+    }
+    setLoading(false);
+  };
+
+  const handleRecover = async () => {
+    if (!recoverName.trim() || !pin.trim()) { setError("Enter name and PIN"); return; }
+    setLoading(true);
+    const user = await recoverUser(recoverName.trim(), pin.trim());
+    if (user) {
+      onComplete({ id: user.id, name: user.name, emoji: user.emoji });
+    } else {
+      setError("No account found with that name and PIN");
+    }
+    setLoading(false);
+  };
+
+  return (
+    <div className="max-w-sm mx-auto px-4 flex flex-col items-center justify-center min-h-screen">
+      <img src="/gonchu.webp" alt="" className="w-24 h-24 object-contain mb-4 animate-pop-in" />
+      <h1 className="text-xl font-bold mb-1 animate-fade-up">Welcome to Focusum</h1>
+      <p className="text-xs mb-6 animate-fade-up" style={{ color: V.muted }}>Your non-negotiables. No excuses.</p>
+
+      {mode === "new" ? (
+        <div className="w-full animate-fade-up" style={{ animationDelay: "0.2s" }}>
+          <input value={name} onChange={(e) => setName(e.target.value)} placeholder="Your name" maxLength={20}
+            className="w-full px-4 py-3 rounded-xl text-sm mb-3 outline-none text-center font-medium"
+            style={{ background: V.surface, border: `1px solid ${V.border}`, color: V.text }} />
+
+          <p className="text-[10px] mb-2 text-center" style={{ color: V.faint }}>Pick your avatar</p>
+          <div className="flex gap-2 flex-wrap justify-center mb-4">
+            {USER_EMOJIS.map((e) => (
+              <button key={e} onClick={() => setEmoji(e)}
+                className="w-10 h-10 rounded-xl text-xl flex items-center justify-center transition-all"
+                style={{ background: emoji === e ? V.accentSoft : V.surface, border: `2px solid ${emoji === e ? V.borderActive : "transparent"}` }}>
+                {e}
+              </button>
+            ))}
+          </div>
+
+          <input value={pin} onChange={(e) => setPin(e.target.value.replace(/\D/g, "").slice(0, 4))} placeholder="4-digit PIN (optional, for account recovery)" maxLength={4}
+            className="w-full px-4 py-2.5 rounded-xl text-sm mb-4 outline-none text-center"
+            style={{ background: V.surface, border: `1px solid ${V.border}`, color: V.text }} />
+
+          <button onClick={handleCreate} disabled={!name.trim() || loading}
+            className="btn-press w-full py-3 rounded-xl font-semibold text-sm transition-all mb-3"
+            style={{ background: name.trim() ? V.accent : V.surfaceHover, color: name.trim() ? V.inverse : V.faint }}>
+            {loading ? "Creating..." : "Let's Go"}
+          </button>
+
+          {existingUsers.length > 0 && (
+            <button onClick={() => setMode("existing")} className="w-full text-xs py-2" style={{ color: V.faint }}>
+              Already have an account? Recover it
+            </button>
+          )}
+        </div>
+      ) : (
+        <div className="w-full animate-fade-up">
+          <input value={recoverName} onChange={(e) => setRecoverName(e.target.value)} placeholder="Your name"
+            className="w-full px-4 py-3 rounded-xl text-sm mb-3 outline-none text-center"
+            style={{ background: V.surface, border: `1px solid ${V.border}`, color: V.text }} />
+          <input value={pin} onChange={(e) => setPin(e.target.value.replace(/\D/g, "").slice(0, 4))} placeholder="Your 4-digit PIN" maxLength={4}
+            className="w-full px-4 py-3 rounded-xl text-sm mb-3 outline-none text-center"
+            style={{ background: V.surface, border: `1px solid ${V.border}`, color: V.text }} />
+          {error && <p className="text-xs text-center mb-3" style={{ color: "#ef4444" }}>{error}</p>}
+          <button onClick={handleRecover} disabled={loading}
+            className="btn-press w-full py-3 rounded-xl font-semibold text-sm mb-3"
+            style={{ background: V.accent, color: V.inverse }}>
+            {loading ? "Recovering..." : "Recover Account"}
+          </button>
+          <button onClick={() => { setMode("new"); setError(""); }} className="w-full text-xs py-2" style={{ color: V.faint }}>
+            Create new account instead
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function TaskAddForm({onAdd,onCancel}:{onAdd:(t:TaskTemplate)=>void;onCancel:()=>void}){const[l,sL]=useState("");const[e,sE]=useState("\uD83D\uDCDA");const[d,sD]=useState(15);const[r,sR]=useState(false);return(<div className="p-4 rounded-xl animate-fade-up" style={{background:V.surface,border:`1px solid ${V.borderActive}`}}><p className="text-xs font-medium mb-3" style={{color:V.accent}}>New Session</p><input value={l} onChange={ev=>sL(ev.target.value)} placeholder="Session name" maxLength={30} className="w-full px-3 py-2 rounded-lg text-sm mb-3 outline-none" style={{background:V.surfaceHover,border:`1px solid ${V.border}`,color:V.text}}/><div className="flex gap-1.5 flex-wrap mb-3">{EMOJI_OPTIONS.map(em=>(<button key={em} onClick={()=>sE(em)} className="w-8 h-8 rounded-lg text-base flex items-center justify-center" style={{background:e===em?V.accentSoft:V.surfaceHover,border:`1px solid ${e===em?V.borderActive:"transparent"}`}}>{em}</button>))}</div><div className="flex gap-1.5 flex-wrap mb-3">{DUR_OPTS.map(dur=>(<button key={dur} onClick={()=>sD(dur)} className="px-2.5 py-1 rounded-lg text-xs font-medium" style={{background:d===dur?V.accentSoft:V.surfaceHover,color:d===dur?V.accent:V.muted,border:`1px solid ${d===dur?V.borderActive:"transparent"}`}}>{dur}m</button>))}</div><label className="flex items-center gap-2 mb-3 cursor-pointer"><input type="checkbox" checked={r} onChange={ev=>sR(ev.target.checked)} className="w-3.5 h-3.5 rounded" style={{accentColor:V.accent}}/><span className="text-xs" style={{color:V.muted}}>Can repeat?</span></label><div className="flex gap-2"><button onClick={onCancel} className="btn-press flex-1 py-2 rounded-lg text-xs" style={{border:`1px solid ${V.border}`,color:V.muted}}>Cancel</button><button onClick={()=>{if(!l.trim())return;onAdd({id:`custom-${Date.now()}`,label:l.trim(),emoji:e,duration:d*60,repeatable:r,isCustom:true});}} disabled={!l.trim()} className="btn-press flex-1 py-2 rounded-lg text-xs font-medium" style={{background:l.trim()?V.accent:V.surfaceHover,color:l.trim()?V.inverse:V.faint}}>Add</button></div></div>);}
 
 function TaskEditForm({task,onSave,onCancel}:{task:Task;onSave:(u:Partial<TaskTemplate>)=>void;onCancel:()=>void}){const[l,sL]=useState(task.label);const[e,sE]=useState(task.emoji);const[d,sD]=useState(task.duration/60);const[r,sR]=useState(task.repeatable);return(<div className="p-4 rounded-xl animate-fade-up" style={{background:V.surface,border:`1px solid ${V.borderActive}`}}><p className="text-xs font-medium mb-3" style={{color:V.accent}}>Edit Session</p><input value={l} onChange={ev=>sL(ev.target.value)} maxLength={30} className="w-full px-3 py-2 rounded-lg text-sm mb-3 outline-none" style={{background:V.surfaceHover,border:`1px solid ${V.border}`,color:V.text}}/><div className="flex gap-1.5 flex-wrap mb-3">{EMOJI_OPTIONS.map(em=>(<button key={em} onClick={()=>sE(em)} className="w-8 h-8 rounded-lg text-base flex items-center justify-center" style={{background:e===em?V.accentSoft:V.surfaceHover,border:`1px solid ${e===em?V.borderActive:"transparent"}`}}>{em}</button>))}</div><div className="flex gap-1.5 flex-wrap mb-3">{DUR_OPTS.map(dur=>(<button key={dur} onClick={()=>sD(dur)} className="px-2.5 py-1 rounded-lg text-xs font-medium" style={{background:d===dur?V.accentSoft:V.surfaceHover,color:d===dur?V.accent:V.muted,border:`1px solid ${d===dur?V.borderActive:"transparent"}`}}>{dur}m</button>))}</div><label className="flex items-center gap-2 mb-3 cursor-pointer"><input type="checkbox" checked={r} onChange={ev=>sR(ev.target.checked)} className="w-3.5 h-3.5 rounded" style={{accentColor:V.accent}}/><span className="text-xs" style={{color:V.muted}}>Can repeat?</span></label><div className="flex gap-2"><button onClick={onCancel} className="btn-press flex-1 py-2 rounded-lg text-xs" style={{border:`1px solid ${V.border}`,color:V.muted}}>Cancel</button><button onClick={()=>onSave({label:l.trim(),emoji:e,duration:d*60,repeatable:r})} className="btn-press flex-1 py-2 rounded-lg text-xs font-medium" style={{background:V.accent,color:V.inverse}}>Save</button></div></div>);}
