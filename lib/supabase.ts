@@ -50,14 +50,11 @@ export async function getAllUsers(): Promise<AppUser[]> {
   return data || [];
 }
 
-export async function recoverUser(name: string, pin: string): Promise<AppUser | null> {
+export async function recoverUser(name: string, pin?: string): Promise<AppUser | null> {
   if (!supabase) return null;
-  const { data, error } = await supabase
-    .from("users")
-    .select("*")
-    .eq("name", name)
-    .eq("pin", pin)
-    .single();
+  let query = supabase.from("users").select("*").eq("name", name);
+  if (pin) query = query.eq("pin", pin);
+  const { data, error } = await query.limit(1).single();
   if (error) return null;
   return data;
 }

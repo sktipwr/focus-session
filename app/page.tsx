@@ -79,6 +79,15 @@ function loadHistory(): DayRecord[] { if (typeof window === "undefined") return 
 // ── Helpers ──
 function fmt(s: number): string { return `${Math.floor(s/60).toString().padStart(2,"0")}:${(s%60).toString().padStart(2,"0")}`; }
 function fmtDate(d: string): string { return new Date(d+"T00:00:00").toLocaleDateString("en-US",{weekday:"short",month:"short",day:"numeric"}); }
+function fmtMins(m: number): string {
+  if (m < 60) return `${Math.round(m)}m`;
+  const h = Math.floor(m / 60), rem = Math.round(m % 60);
+  if (h < 24) return rem > 0 ? `${h}h ${rem}m` : `${h}h`;
+  const d = Math.floor(h / 24), rh = h % 24;
+  if (d < 7) return rh > 0 ? `${d}d ${rh}h` : `${d}d`;
+  const w = Math.floor(d / 7), rd = d % 7;
+  return rd > 0 ? `${w}w ${rd}d` : `${w}w`;
+}
 function getStreak(h: DayRecord[]): number { if(!h.length) return 0; let s=0; const sorted=[...h].sort((a,b)=>b.date.localeCompare(a.date)); for(let i=0;i<sorted.length;i++){const d=new Date();d.setDate(d.getDate()-i);const exp=d.toISOString().slice(0,10);if(sorted[i]?.date===exp&&sorted[i].completedCount>0)s++;else if(i===0&&sorted[0].date===todayKey()){s++;continue;}else break;} return s; }
 
 const QUOTES=["Discipline is choosing between what you want now and what you want most.","The secret of getting ahead is getting started.","Small daily improvements are the key to staggering long-term results.","You don't have to be extreme, just consistent.","Your future self is watching you right now through memories.","One focused hour is worth more than a distracted day.","Don't break the chain. Show up every single day.","Hard choices, easy life. Easy choices, hard life."];
@@ -377,7 +386,7 @@ export default function Home() {
     {tab==="insights"&&(<div className="flex-1 px-4 pt-6 pb-4 animate-fade-up">
       <h1 className="text-lg font-bold mb-5 text-center">Insights</h1>
       <div className="grid grid-cols-2 gap-3 mb-5">
-        <div className="p-4 rounded-xl text-center" style={{background:V.surface,border:`1px solid ${V.border}`}}><p className="text-2xl font-bold" style={{color:V.accent}}>{Math.round(tm)}<span className="text-xs font-normal" style={{color:V.muted}}>m</span></p><p className="text-[10px] mt-0.5" style={{color:V.muted}}>Focus Today</p></div>
+        <div className="p-4 rounded-xl text-center" style={{background:V.surface,border:`1px solid ${V.border}`}}><p className="text-2xl font-bold" style={{color:V.accent}}>{fmtMins(tm)}</p><p className="text-[10px] mt-0.5" style={{color:V.muted}}>Focus Today</p></div>
         <div className="p-4 rounded-xl text-center" style={{background:V.surface,border:`1px solid ${V.border}`}}><p className="text-2xl font-bold" style={{color:V.success}}>{cc}<span className="text-xs font-normal" style={{color:V.muted}}>/{tasks.length}</span></p><p className="text-[10px] mt-0.5" style={{color:V.muted}}>Completed</p></div>
       </div>
       <div className="grid grid-cols-2 gap-3 mb-5">
@@ -385,16 +394,13 @@ export default function Home() {
         <div className="p-4 rounded-xl text-center" style={{background:V.surface,border:`1px solid ${V.border}`}}><p className="text-2xl font-bold">{(()=>{let l=streak;if(history.length>1){const s=[...history].sort((a,b)=>a.date.localeCompare(b.date));let r=1;for(let i=1;i<s.length;i++){const diff=(new Date(s[i].date+"T00:00:00").getTime()-new Date(s[i-1].date+"T00:00:00").getTime())/86400000;if(diff===1&&s[i].completedCount>0){r++;if(r>l)l=r;}else r=s[i].completedCount>0?1:0;}}return l;})()}</p><p className="text-[10px] mt-0.5" style={{color:V.muted}}>Best Streak</p></div>
       </div>
 
-      {/* Weekly chart */}
+      {/* Focus Journey */}
       <div className="p-4 rounded-xl mb-5" style={{background:V.surface,border:`1px solid ${V.border}`}}>
-        <p className="text-xs font-medium mb-3">Your Focus Journey</p>
-        <div className="flex items-end gap-2 h-28">{(()=>{const days:{l:string;m:number}[]=[];for(let i=6;i>=0;i--){const d=new Date();d.setDate(d.getDate()-i);const ds=d.toISOString().slice(0,10);const rec=history.find(h=>h.date===ds);days.push({l:d.toLocaleDateString("en-US",{weekday:"short"}),m:ds===todayKey()?tm:(rec?.totalMinutes||0)});}const mx=Math.max(...days.map(d=>d.m),1);return days.map((d,i)=>(<div key={i} className="flex-1 flex flex-col items-center gap-1"><div className="w-full rounded-t-md transition-all" style={{height:`${Math.max(4,(d.m/mx)*100)}%`,background:d.m>0?V.accent:V.border}}/><span className="text-[9px]" style={{color:V.faint}}>{d.l}</span></div>));})()}</div>
+        <p className="text-xs font-medium mb-3">Focus Journey</p>
+        <div className="flex items-end gap-2 h-28">{(()=>{const days:{l:string;m:number;isToday:boolean}[]=[];for(let i=6;i>=0;i--){const d=new Date();d.setDate(d.getDate()-i);const ds=d.toISOString().slice(0,10);const isT=i===0;const rec=history.find(h=>h.date===ds);days.push({l:d.toLocaleDateString("en-US",{weekday:"short"}),m:isT?tm:(rec?.totalMinutes||0),isToday:isT});}const mx=Math.max(...days.map(d=>d.m),1);return days.map((d,i)=>(<div key={i} className="flex-1 flex flex-col items-center gap-1"><div className="w-full rounded-t-md transition-all" style={{height:`${Math.max(4,(d.m/mx)*100)}%`,background:d.isToday?V.accent:d.m>0?"var(--color-grid-3)":V.border}}/><span className="text-[9px]" style={{color:d.isToday?V.accent:V.faint}}>{d.l}</span></div>));})()}</div>
       </div>
 
-      {/* Compound Effect */}
-      {(()=>{const totals=new Map<string,{label:string;emoji:string;mins:number;sessions:number}>();[...history,{date:todayKey(),tasks,totalMinutes:tm,completedCount:cc,totalCount:tasks.length}].forEach(day=>day.tasks.forEach(t=>{if(t.completedCount>0){const ex=totals.get(t.id)||{label:t.label,emoji:t.emoji,mins:0,sessions:0};ex.mins+=t.completedCount*(t.duration/60);ex.sessions+=t.completedCount;totals.set(t.id,ex);}}));const entries=[...totals.values()].sort((a,b)=>b.mins-a.mins);if(!entries.length)return null;const daysTracked=Math.max(history.length+(tasks.some(t=>t.completedCount>0)?1:0),1);return(<div className="p-4 rounded-xl mb-5" style={{background:V.surface,border:`1px solid ${V.border}`}}><div className="flex items-baseline justify-between mb-0.5"><p className="text-xs font-medium">Compound Effect</p><p className="text-[10px]" style={{color:V.faint}}>it&apos;s not lack of energy, it&apos;s attention</p></div><p className="text-[10px] mb-3" style={{color:V.faint}}>Your sessions so far ↗</p><div className="space-y-3">{entries.map((e,i)=>{const annualHrs=Math.round((e.mins/daysTracked)*365/60);return(<div key={i} className="flex items-center gap-2.5"><span className="text-base">{e.emoji}</span><div className="flex-1 min-w-0"><div className="flex items-baseline justify-between"><p className="text-xs font-medium truncate">{e.label}</p><p className="text-xs font-bold shrink-0 ml-2" style={{color:V.accent}}>{Math.round(e.mins)}m</p></div><p className="text-[10px]" style={{color:V.faint}}>{e.sessions} session{e.sessions!==1?"s":""} · <span style={{color:V.muted}}>→ {annualHrs}h this year</span></p></div></div>);})}</div></div>);})()}
-
-      {/* Contribution grid */}
+      {/* Consistency grid */}
       <div className="p-4 rounded-xl mb-5" style={{background:V.surface,border:`1px solid ${V.border}`}}>
         <div className="flex justify-between items-center mb-3"><p className="text-xs font-medium">Consistency</p><div className="flex items-center gap-1 text-[9px]" style={{color:V.faint}}><span>Less</span>{[V.surface,"var(--color-grid-1)","var(--color-grid-2)","var(--color-grid-3)",V.success].map((c,i)=>(<div key={i} className="w-2 h-2 rounded-sm" style={{background:c,border:i===0?`1px solid ${V.border}`:"none"}}/>))}<span>More</span></div></div>
         <div className="flex gap-[3px]"><div className="flex flex-col gap-[3px] mr-1" style={{color:V.faint,fontSize:"8px",lineHeight:"11px"}}><span>M</span><span>T</span><span>W</span><span>T</span><span>F</span><span>S</span><span>S</span></div>
@@ -402,40 +408,37 @@ export default function Home() {
         </div>
       </div>
 
-      {history.length>0&&<div><p className="text-xs font-medium mb-2" style={{color:V.muted}}>Recent</p><div className="space-y-2">{history.slice(0,5).map(day=>(<div key={day.date} className="flex items-center gap-3 p-3 rounded-xl" style={{background:V.surface,border:`1px solid ${V.border}`}}><div className="flex gap-1">{day.tasks.slice(0,4).map(t=><span key={t.id} className="text-sm">{t.emoji}</span>)}</div><div className="flex-1"><p className="text-xs font-medium">{fmtDate(day.date)}</p></div><p className="text-xs font-semibold" style={{color:V.success}}>{day.completedCount}/{day.totalCount}</p></div>))}</div></div>}
-
-      {/* ══ TEAM SECTION ══ */}
-      {(teamStreaks.length>0||teamData.length>0)&&<>
-        <div className="mt-6 mb-3 flex items-center gap-2"><div className="h-px flex-1" style={{background:V.border}}/><span className="text-[10px] font-bold tracking-widest uppercase" style={{color:V.faint}}>Team</span><div className="h-px flex-1" style={{background:V.border}}/></div>
-
-        {/* Team streaks */}
-        {teamStreaks.length>0&&<div className="space-y-2 mb-4">
-          {teamStreaks.map(u=>(
-            <div key={u.name} className="flex items-center gap-3 p-3 rounded-xl" style={{background:V.surface,border:`1px solid ${V.border}`}}>
-              <span className="text-xl">{u.emoji}</span>
-              <div className="flex-1"><p className="text-sm font-medium">{u.name}</p><p className="text-[10px]" style={{color:V.faint}}>Best: {u.best_streak} days</p></div>
-              <div className="text-right"><p className="text-sm font-bold" style={{color:V.accent}}>&#128293; {u.current_streak}</p><p className="text-[10px]" style={{color:V.faint}}>streak</p></div>
-            </div>
-          ))}
-        </div>}
-
-        {/* Team today */}
-        {teamData.length>0&&<div className="mb-4">
-          <p className="text-xs font-medium mb-2" style={{color:V.muted}}>Team Activity</p>
-          <div className="space-y-2">
-            {teamData.slice(0,10).map((e,i)=>(
-              <div key={`${e.date}-${e.name}-${i}`} className="flex items-center gap-3 p-3 rounded-xl" style={{background:V.surface,border:`1px solid ${V.border}`}}>
-                <span className="text-lg">{e.emoji}</span>
-                <div className="flex-1"><p className="text-xs font-medium">{e.name}</p><p className="text-[10px]" style={{color:V.faint}}>{fmtDate(e.date)}</p></div>
-                <div className="text-right"><p className="text-xs font-semibold" style={{color:V.success}}>{e.completed_tasks}/{e.total_tasks}</p><p className="text-[10px]" style={{color:V.faint}}>{e.total_minutes}m</p></div>
+      {/* Compound Effect */}
+      {(()=>{
+        const totals=new Map<string,{label:string;emoji:string;mins:number;sessions:number}>();
+        const allDays=[...history.filter(d=>d.date!==todayKey()),{date:todayKey(),tasks,totalMinutes:tm,completedCount:cc,totalCount:tasks.length}];
+        allDays.forEach(day=>day.tasks.forEach(t=>{if(t.completedCount>0){const ex=totals.get(t.id)||{label:t.label,emoji:t.emoji,mins:0,sessions:0};ex.mins+=t.completedCount*(t.duration/60);ex.sessions+=t.completedCount;totals.set(t.id,ex);}}));
+        const entries=[...totals.values()].sort((a,b)=>b.mins-a.mins);
+        if(!entries.length)return null;
+        const daysTracked=Math.max(allDays.filter(d=>d.completedCount>0).length,1);
+        return(<div className="p-4 rounded-xl mb-5" style={{background:V.surface,border:`1px solid ${V.border}`}}>
+          <p className="text-xs font-medium mb-0.5">Compound Effect</p>
+          <p className="text-[10px] mb-3" style={{color:V.faint}}>not lack of energy — it&apos;s lack of attention</p>
+          <div className="space-y-3">{entries.map((e,i)=>{
+            const perDay=e.mins/daysTracked;
+            return(<div key={i} className="flex items-center gap-2.5">
+              <span className="text-base">{e.emoji}</span>
+              <div className="flex-1 min-w-0">
+                <div className="flex items-baseline justify-between">
+                  <p className="text-xs font-medium truncate">{e.label}</p>
+                  <p className="text-xs font-bold shrink-0 ml-2" style={{color:V.accent}}>{fmtMins(e.mins)} total</p>
+                </div>
+                <p className="text-[10px]" style={{color:V.faint}}>{e.sessions} session{e.sessions!==1?"s":""} · <span style={{color:V.muted}}>~{fmtMins(perDay*7)}/week · ~{fmtMins(perDay*30)}/month</span></p>
               </div>
-            ))}
-          </div>
-        </div>}
+            </div>);
+          })}</div>
+          <p className="text-[10px] mt-3 pt-2.5" style={{color:V.faint,borderTop:`1px solid ${V.border}`}}>Estimated at your current pace · {daysTracked} day{daysTracked!==1?"s":""} tracked</p>
+        </div>);
+      })()}
 
-        {/* Switch user */}
-        <button onClick={()=>{localStorage.removeItem(UK);setCurrentUser(null);setUserSetup(true);}} className="w-full text-xs py-2 mt-2" style={{color:V.faint}}>Switch User</button>
-      </>}
+      {history.length>0&&<div className="mb-4"><p className="text-xs font-medium mb-2" style={{color:V.muted}}>Recent</p><div className="space-y-2">{history.slice(0,5).map(day=>(<div key={day.date} className="flex items-center gap-3 p-3 rounded-xl" style={{background:V.surface,border:`1px solid ${V.border}`}}><div className="flex gap-1">{day.tasks.slice(0,4).map(t=><span key={t.id} className="text-sm">{t.emoji}</span>)}</div><div className="flex-1"><p className="text-xs font-medium">{fmtDate(day.date)}</p></div><p className="text-xs font-semibold" style={{color:V.success}}>{day.completedCount}/{day.totalCount}</p></div>))}</div></div>}
+
+      <button onClick={()=>{localStorage.removeItem(UK);setCurrentUser(null);setUserSetup(true);}} className="w-full text-xs py-3 mt-2" style={{color:V.faint}}>Switch User</button>
     </div>)}
 
     {/* ══ BOTTOM TAB BAR ══ */}
@@ -475,13 +478,13 @@ function UserSetup({ onComplete, existingUsers }: { onComplete: (u: { id: string
   };
 
   const handleRecover = async () => {
-    if (!recoverName.trim() || !pin.trim()) { setError("Enter name and PIN"); return; }
+    if (!recoverName.trim()) { setError("Enter your name"); return; }
     setLoading(true);
-    const user = await recoverUser(recoverName.trim(), pin.trim());
+    const user = await recoverUser(recoverName.trim(), pin.trim() || undefined);
     if (user) {
       onComplete({ id: user.id, name: user.name, emoji: user.emoji });
     } else {
-      setError("No account found with that name and PIN");
+      setError(pin.trim() ? "No account found with that name and PIN" : "No account found with that name");
     }
     setLoading(false);
   };
@@ -531,7 +534,7 @@ function UserSetup({ onComplete, existingUsers }: { onComplete: (u: { id: string
           <input value={recoverName} onChange={(e) => setRecoverName(e.target.value)} placeholder="Your name"
             className="w-full px-4 py-3 rounded-xl text-sm mb-3 outline-none text-center"
             style={{ background: V.surface, border: `1px solid ${V.border}`, color: V.text }} />
-          <input value={pin} onChange={(e) => setPin(e.target.value.replace(/\D/g, "").slice(0, 4))} placeholder="Your 4-digit PIN" maxLength={4}
+          <input value={pin} onChange={(e) => setPin(e.target.value.replace(/\D/g, "").slice(0, 4))} placeholder="4-digit PIN (if you set one)" maxLength={4}
             className="w-full px-4 py-3 rounded-xl text-sm mb-3 outline-none text-center"
             style={{ background: V.surface, border: `1px solid ${V.border}`, color: V.text }} />
           {error && <p className="text-xs text-center mb-3" style={{ color: "#ef4444" }}>{error}</p>}
