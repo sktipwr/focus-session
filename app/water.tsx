@@ -11,32 +11,30 @@ interface WaterProps {
 export default function Water({
   color = "#7b93ff",
   height = 70,
-  opacity = 0.25,
+  opacity = 0.22,
 }: WaterProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
-  const tiltRef = useRef({ x: 0, y: 0 });
-  const smoothTiltRef = useRef({ x: 0, y: 0 });
+  const tiltRef = useRef(0); // -1 (left) to 1 (right)
+  const smoothTiltRef = useRef(0);
   const [hasPermission, setHasPermission] = useState(false);
   const animRef = useRef<number>(0);
 
-  // Calm, gentle waves
+  // Gentle wave params
   const wavesRef = useRef([
-    { amplitude: 6, frequency: 0.015, speed: 0.012, phase: 0 },
-    { amplitude: 4, frequency: 0.025, speed: -0.008, phase: 2 },
-    { amplitude: 2.5, frequency: 0.04, speed: 0.015, phase: 4 },
+    { amplitude: 4, frequency: 0.018, speed: 0.01, phase: 0 },
+    { amplitude: 2.5, frequency: 0.03, speed: -0.007, phase: 2 },
+    { amplitude: 1.5, frequency: 0.045, speed: 0.013, phase: 4 },
   ]);
 
   useEffect(() => {
     const handleOrientation = (e: DeviceOrientationEvent) => {
-      const gamma = (e.gamma || 0) / 45;
-      tiltRef.current = {
-        x: Math.max(-1, Math.min(1, gamma)),
-        y: Math.max(-1, Math.min(1, ((e.beta || 0) - 45) / 45)),
-      };
+      // gamma: left-right tilt in degrees (-90 to 90)
+      // Positive gamma = tilted right, negative = tilted left
+      // We invert it: tilt right → water pools right (positive = right side higher)
+      tiltRef.current = Math.max(-1, Math.min(1, (e.gamma || 0) / 35));
       if (!hasPermission) setHasPermission(true);
     };
 
-    // iOS 13+ permission
     const requestPermission = async () => {
       if (typeof DeviceOrientationEvent !== "undefined" && "requestPermission" in DeviceOrientationEvent) {
         try {
@@ -49,13 +47,13 @@ export default function Water({
     };
     requestPermission();
 
-    // Mouse/touch fallback
+    // Mouse/touch fallback for desktop
     const handleMouse = (e: MouseEvent) => {
-      tiltRef.current = { x: (e.clientX / window.innerWidth - 0.5) * 2, y: (e.clientY / window.innerHeight - 0.5) * 2 };
+      tiltRef.current = (e.clientX / window.innerWidth - 0.5) * 2;
     };
     const handleTouch = (e: TouchEvent) => {
       if (e.touches.length > 0) {
-        tiltRef.current = { x: (e.touches[0].clientX / window.innerWidth - 0.5) * 2, y: (e.touches[0].clientY / window.innerHeight - 0.5) * 2 };
+        tiltRef.current = (e.touches[0].clientX / window.innerWidth - 0.5) * 2;
       }
     };
     window.addEventListener("mousemove", handleMouse);
@@ -82,39 +80,51 @@ export default function Water({
       const { width } = canvas;
       ctx.clearRect(0, 0, width, height);
 
-      // Smooth interpolation of tilt — makes it feel fluid, not jittery
-      const lerp = 0.04;
-      smoothTiltRef.current.x += (tiltRef.current.x - smoothTiltRef.current.x) * lerp;
-      smoothTiltRef.current.y += (tiltRef.current.y - smoothTiltRef.current.y) * lerp;
-      const tiltX = smoothTiltRef.current.x;
+      // Smooth interpolation — water eases toward tilt like real liquid
+      const lerp = 0.03;
+      smoothTiltRef.current += (tiltRef.current - smoothTiltRef.current) * lerp;
+      const tilt = smoothTiltRef.current; // -1 (tilted left) to 1 (tilted right)
 
       const waves = wavesRef.current;
-      waves.forEach((w) => { w.phase += w.speed + tiltX * 0.005; });
+      waves.forEach((w) => { w.phase += w.speed; });
 
-      // Draw 3 translucent wave layers
+      // Draw 3 wave layers
       for (let layer = 0; layer < 3; layer++) {
-        const layerOpacity = opacity - layer * 0.06;
-        const layerOffset = layer * 6;
+        const layerOpacity = opacity - layer * 0.05;
+        const layerOffset = layer * 5;
 
         ctx.beginPath();
         ctx.moveTo(0, height);
 
         for (let x = 0; x <= width; x += 2) {
-          let y = layerOffset;
+          // Base wave ripple (gentle surface movement)
+          let waveY = 0;
           waves.forEach((w) => {
-            const a = w.amplitude * (1 + Math.abs(tiltX) * 0.5);
-            y += Math.sin(x * w.frequency + w.phase + tiltX * 1.5) * a;
+            waveY += Math.sin(x * w.frequency + w.phase) * w.amplitude;
           });
-          // Water level shifts gently with tilt
-          y += tiltX * 8 * ((x / width - 0.5) * 2);
-          ctx.lineTo(x, y + 18);
+
+          // GRAVITY / GLASS PHYSICS:
+          // When tilt > 0 (phone tilted right), water pools on the right.
+          // The water surface becomes a slope: left side lower, right side higher.
+          // This is like tilting a glass — the water level follows gravity.
+          //
+          // xNorm goes from -1 (left edge) to +1 (right edge)
+          const xNorm = (x / width) * 2 - 1;
+          // Water displacement: tilt * xNorm gives a linear slope
+          // Positive tilt + positive xNorm (right side) = water rises on right
+          const gravityOffset = tilt * xNorm * 25;
+
+          // Combined: base offset + ripple + gravity
+          const y = layerOffset + 15 + waveY + gravityOffset;
+
+          ctx.lineTo(x, y);
         }
 
         ctx.lineTo(width, height);
         ctx.closePath();
 
         const gradient = ctx.createLinearGradient(0, 0, 0, height);
-        gradient.addColorStop(0, hexToRgba(color, Math.max(0, layerOpacity - 0.05)));
+        gradient.addColorStop(0, hexToRgba(color, Math.max(0, layerOpacity * 0.6)));
         gradient.addColorStop(1, hexToRgba(color, layerOpacity));
         ctx.fillStyle = gradient;
         ctx.fill();

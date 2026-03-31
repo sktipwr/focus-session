@@ -31,6 +31,9 @@
 
   --color-water: #7b93ff;
   --color-ring-track: #2a2a34;
+  --color-grid-1: #1a3520;
+  --color-grid-2: #264d33;
+  --color-grid-3: #2ea84d;
 
   color-scheme: dark;
 }
@@ -66,6 +69,9 @@
 
   --color-water: #4a5fd6;
   --color-ring-track: #e0ddd8;
+  --color-grid-1: #d4f0dc;
+  --color-grid-2: #a6e3b5;
+  --color-grid-3: #6bc97e;
 
   color-scheme: light;
 }

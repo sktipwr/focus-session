@@ -482,51 +482,195 @@ export default function Home() {
   const motivation = QUOTES[Math.floor(Date.now() / 3600000) % QUOTES.length];
 
   // ── HISTORY ──
-  if (view === "history") return (
-    <div className="max-w-md mx-auto px-4 py-8 min-h-screen">
-      <div className="flex items-center justify-between mb-6">
-        <button onClick={() => setView("list")} className="text-sm font-medium" style={{ color: V.accent }}>&larr; Back</button>
-        <h1 className="text-lg font-bold">Daily Progress</h1>
-        <div className="w-12" />
-      </div>
-      {streak > 0 && (
-        <div className="text-center mb-6 p-4 rounded-xl" style={{ background: V.surface, border: `1px solid ${V.border}` }}>
-          <img src="/emoji/sticker_17.png" alt="" className="w-14 h-14 mb-1 mx-auto" />
-          <div className="text-lg font-bold">{streak} day streak</div>
-          <div className="text-sm" style={{ color: V.muted }}>Keep it going!</div>
+  if (view === "history") {
+    // Build contribution grid: 5 weeks x 7 days
+    const gridWeeks = 5;
+    const today = new Date();
+    const todayStr = todayKey();
+    const historyMap = new Map(history.map((d) => [d.date, d]));
+    // Also check if today has completions from current session
+    const todayCompleted = completedCount;
+
+    const grid: { date: string; level: number; label: string }[][] = [];
+    // Start from (gridWeeks * 7 - 1) days ago, aligned to Monday
+    const startDate = new Date(today);
+    startDate.setDate(today.getDate() - (gridWeeks * 7 - 1));
+    // Align to Monday (1 = Monday)
+    const startDay = startDate.getDay();
+    const mondayOffset = startDay === 0 ? -6 : 1 - startDay;
+    startDate.setDate(startDate.getDate() + mondayOffset);
+
+    let currentDate = new Date(startDate);
+    for (let w = 0; w < gridWeeks; w++) {
+      const week: { date: string; level: number; label: string }[] = [];
+      for (let d = 0; d < 7; d++) {
+        const dateStr = currentDate.toISOString().slice(0, 10);
+        const record = historyMap.get(dateStr);
+        const isFuture = currentDate > today;
+        let level = 0;
+        let completions = 0;
+        let total = 1;
+
+        if (dateStr === todayStr) {
+          completions = todayCompleted;
+          total = tasks.length || 1;
+        } else if (record) {
+          completions = record.completedCount;
+          total = record.totalCount || 1;
+        }
+
+        if (!isFuture && (completions > 0 || record)) {
+          const ratio = completions / total;
+          if (ratio === 0) level = 0;
+          else if (ratio < 0.33) level = 1;
+          else if (ratio < 0.66) level = 2;
+          else if (ratio < 1) level = 3;
+          else level = 4;
+        }
+        if (isFuture) level = -1;
+
+        const dayName = currentDate.toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric" });
+        week.push({ date: dateStr, level, label: `${dayName}: ${completions}/${total} sessions` });
+        currentDate.setDate(currentDate.getDate() + 1);
+      }
+      grid.push(week);
+    }
+
+    const totalMins = history.reduce((s, d) => s + d.totalMinutes, 0) + totalMinutes;
+    const totalDaysActive = history.filter((d) => d.completedCount > 0).length + (todayCompleted > 0 ? 1 : 0);
+    const avgCompletion = history.length > 0
+      ? Math.round(history.reduce((s, d) => s + (d.completedCount / d.totalCount) * 100, 0) / history.length)
+      : 0;
+
+    // Find longest streak
+    let longestStreak = streak;
+    if (history.length > 1) {
+      const sorted = [...history].sort((a, b) => a.date.localeCompare(b.date));
+      let run = 1;
+      for (let i = 1; i < sorted.length; i++) {
+        const prev = new Date(sorted[i - 1].date + "T00:00:00");
+        const curr = new Date(sorted[i].date + "T00:00:00");
+        const diffDays = (curr.getTime() - prev.getTime()) / 86400000;
+        if (diffDays === 1 && sorted[i].completedCount > 0) {
+          run++;
+          if (run > longestStreak) longestStreak = run;
+        } else {
+          run = sorted[i].completedCount > 0 ? 1 : 0;
+        }
+      }
+    }
+
+    const gridColors = [
+      V.surface,           // 0: no activity
+      "var(--color-grid-1, #1a3520)", // 1: low
+      "var(--color-grid-2, #264d33)", // 2: medium
+      "var(--color-grid-3, #2ea84d)", // 3: high
+      V.success,           // 4: full
+    ];
+
+    return (
+      <div className="max-w-md mx-auto px-4 py-8 min-h-screen">
+        <div className="flex items-center justify-between mb-6">
+          <button onClick={() => setView("list")} className="text-sm font-medium" style={{ color: V.accent }}>&larr; Back</button>
+          <h1 className="text-lg font-bold">Daily Progress</h1>
+          <div className="w-12" />
         </div>
-      )}
-      {history.length === 0 ? (
-        <div className="text-center mt-12" style={{ color: V.muted }}>
-          <p className="text-lg mb-2">No history yet</p>
-          <p className="text-sm">Complete your first day to see progress here</p>
+
+        {/* Stats summary */}
+        <div className="grid grid-cols-2 gap-3 mb-6">
+          <div className="p-3 rounded-xl text-center" style={{ background: V.surface, border: `1px solid ${V.border}` }}>
+            <div className="text-2xl font-bold" style={{ color: V.accent }}>{streak}</div>
+            <div className="text-xs" style={{ color: V.muted }}>Current Streak</div>
+          </div>
+          <div className="p-3 rounded-xl text-center" style={{ background: V.surface, border: `1px solid ${V.border}` }}>
+            <div className="text-2xl font-bold" style={{ color: V.success }}>{longestStreak}</div>
+            <div className="text-xs" style={{ color: V.muted }}>Longest Streak</div>
+          </div>
+          <div className="p-3 rounded-xl text-center" style={{ background: V.surface, border: `1px solid ${V.border}` }}>
+            <div className="text-2xl font-bold">{Math.round(totalMins)}<span className="text-sm font-normal" style={{ color: V.muted }}>m</span></div>
+            <div className="text-xs" style={{ color: V.muted }}>Total Focused</div>
+          </div>
+          <div className="p-3 rounded-xl text-center" style={{ background: V.surface, border: `1px solid ${V.border}` }}>
+            <div className="text-2xl font-bold">{avgCompletion}<span className="text-sm font-normal" style={{ color: V.muted }}>%</span></div>
+            <div className="text-xs" style={{ color: V.muted }}>Avg Completion</div>
+          </div>
         </div>
-      ) : (
-        <div className="space-y-3">
-          {history.map((day) => (
-            <div key={day.date} className="p-4 rounded-xl" style={{ background: V.surface, border: `1px solid ${V.border}` }}>
-              <div className="flex items-center justify-between mb-2">
-                <span className="font-medium text-sm">{formatDate(day.date)}</span>
-                <span className="text-sm" style={{ color: V.success }}>{day.completedCount}/{day.totalCount}</span>
-              </div>
-              <div className="w-full h-1 rounded-full overflow-hidden mb-2" style={{ background: V.border }}>
-                <div className="h-full rounded-full" style={{ background: V.success, width: `${(day.completedCount / day.totalCount) * 100}%` }} />
-              </div>
-              <div className="flex gap-1.5 flex-wrap">
-                {day.tasks.map((t) => (
-                  <span key={t.id} className="text-xs px-2 py-0.5 rounded-full"
-                    style={{ background: t.status === "done" ? V.surfaceSuccess : V.surface, color: t.status === "done" ? V.success : V.faint }}>
-                    {t.emoji} {t.completedCount > 1 ? `${t.completedCount}x` : ""}
-                  </span>
-                ))}
-              </div>
-              <div className="text-xs mt-2" style={{ color: V.muted }}>{Math.round(day.totalMinutes)} min focused</div>
+
+        {/* GitHub-style contribution grid */}
+        <div className="p-4 rounded-xl mb-6" style={{ background: V.surface, border: `1px solid ${V.border}` }}>
+          <div className="flex items-center justify-between mb-3">
+            <span className="text-sm font-medium">{totalDaysActive} active days</span>
+            <div className="flex items-center gap-1 text-xs" style={{ color: V.muted }}>
+              <span>Less</span>
+              {[0, 1, 2, 3, 4].map((l) => (
+                <div key={l} className="w-2.5 h-2.5 rounded-sm" style={{ background: gridColors[l] }} />
+              ))}
+              <span>More</span>
             </div>
-          ))}
+          </div>
+
+          {/* Day labels */}
+          <div className="flex gap-1">
+            <div className="flex flex-col gap-1 mr-1" style={{ color: V.faint, fontSize: "9px", lineHeight: "14px" }}>
+              <span>M</span><span>T</span><span>W</span><span>T</span><span>F</span><span>S</span><span>S</span>
+            </div>
+            {/* Grid columns (weeks) */}
+            <div className="flex gap-1 flex-1">
+              {grid.map((week, wi) => (
+                <div key={wi} className="flex flex-col gap-1 flex-1">
+                  {week.map((day) => (
+                    <div
+                      key={day.date}
+                      className="aspect-square rounded-sm transition-all"
+                      style={{
+                        background: day.level === -1 ? "transparent" : gridColors[Math.max(0, day.level)],
+                        border: day.date === todayStr ? `1.5px solid ${V.accent}` : day.level === 0 ? `1px solid ${V.border}` : "none",
+                        opacity: day.level === -1 ? 0.15 : 1,
+                      }}
+                      title={day.label}
+                    />
+                  ))}
+                </div>
+              ))}
+            </div>
+          </div>
         </div>
-      )}
-    </div>
-  );
+
+        {/* Recent days list */}
+        {history.length > 0 && (
+          <div className="space-y-3">
+            <h2 className="text-sm font-medium" style={{ color: V.muted }}>Recent Sessions</h2>
+            {history.slice(0, 7).map((day) => (
+              <div key={day.date} className="p-3 rounded-xl" style={{ background: V.surface, border: `1px solid ${V.border}` }}>
+                <div className="flex items-center justify-between mb-1.5">
+                  <span className="font-medium text-sm">{formatDate(day.date)}</span>
+                  <span className="text-sm" style={{ color: V.success }}>{day.completedCount}/{day.totalCount}</span>
+                </div>
+                <div className="w-full h-1 rounded-full overflow-hidden mb-1.5" style={{ background: V.border }}>
+                  <div className="h-full rounded-full" style={{ background: V.success, width: `${(day.completedCount / day.totalCount) * 100}%` }} />
+                </div>
+                <div className="flex gap-1.5 flex-wrap">
+                  {day.tasks.map((t) => (
+                    <span key={t.id} className="text-xs px-1.5 py-0.5 rounded-full"
+                      style={{ background: t.status === "done" ? V.surfaceSuccess : V.surface, color: t.status === "done" ? V.success : V.faint }}>
+                      {t.emoji}
+                    </span>
+                  ))}
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {history.length === 0 && (
+          <div className="text-center mt-8" style={{ color: V.muted }}>
+            <img src="/emoji/sticker_10.png" alt="" className="w-16 h-16 mx-auto mb-3 opacity-60" />
+            <p className="text-sm">Complete your first day to see the grid fill up</p>
+          </div>
+        )}
+      </div>
+    );
+  }
 
   // ── LIST ──
   if (view === "list") return (
