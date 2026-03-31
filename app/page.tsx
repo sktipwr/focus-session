@@ -2,7 +2,6 @@
 
 import { useState, useEffect, useCallback, useRef } from "react";
 import confetti from "canvas-confetti";
-import { useRive, Layout, Fit, Alignment } from "@rive-app/react-canvas";
 import { logSession, syncDaySummary } from "@/lib/supabase";
 
 // ── Sticker system ──
@@ -308,23 +307,6 @@ export default function Home() {
   const [showAddForm, setShowAddForm] = useState(false);
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
-  // Rive animations
-  const { RiveComponent: SplashRive } = useRive({
-    src: "/rive/pomodoro.riv",
-    autoplay: true,
-    layout: new Layout({ fit: Fit.Contain, alignment: Alignment.Center }),
-  });
-  const { RiveComponent: BreatheRive } = useRive({
-    src: "/rive/breathe.riv",
-    autoplay: true,
-    layout: new Layout({ fit: Fit.Contain, alignment: Alignment.Center }),
-  });
-  const { RiveComponent: LoaderRive } = useRive({
-    src: "/rive/loader.riv",
-    autoplay: true,
-    layout: new Layout({ fit: Fit.Contain, alignment: Alignment.Center }),
-  });
-
   const tasks = dayData.tasks;
 
   const updateTasks = useCallback((updater: (t: Task[]) => Task[]) => {
@@ -476,17 +458,15 @@ export default function Home() {
 
   if (!mounted) return (
     <div className="flex items-center justify-center min-h-screen">
-      <div className="w-20 h-20"><LoaderRive /></div>
+      <div style={{ color: V.muted }}>Loading...</div>
     </div>
   );
 
   // ── SPLASH ──
   if (view === "splash") return (
     <div className="flex flex-col items-center justify-center min-h-screen text-center px-4 cursor-pointer" onClick={() => setView("list")}>
-      <div className="w-52 h-52 mb-2 animate-pop-in">
-        <SplashRive />
-      </div>
-      <img src="/gonchu.webp" alt="Ghochu" className="w-24 h-24 object-contain mb-3 animate-fade-up" style={{ animationDelay: "0.3s" }} />
+      <img src="/gonchu.webp" alt="Ghochu" className="w-44 h-44 object-contain mb-4 animate-pop-in animate-float" />
+      <img src={randomSticker("hype")} alt="" className="w-14 h-14 mb-4 animate-sticker-drop" style={{ animationDelay: "0.3s" }} />
       <h1 className="text-3xl font-bold mb-2 animate-fade-up" style={{ animationDelay: "0.4s" }}>Hey Gonchuuu</h1>
       <p className="text-sm mb-8 animate-fade-up" style={{ color: V.muted, animationDelay: "0.6s" }}>Ready to crush your non-negotiables?</p>
       <p className="text-xs animate-pulse animate-fade-up" style={{ color: V.faint, animationDelay: "0.8s" }}>tap anywhere to start</p>
@@ -838,12 +818,8 @@ export default function Home() {
             alt="" className={`w-8 h-8 ml-1 ${overtime ? "animate-wiggle" : ""}`} key={`${running}-${overtime}`} />
         </div>
 
-        {/* Breathe animation behind timer */}
-        <div className="relative mb-8">
-          <div className="absolute inset-0 -m-10 opacity-30 pointer-events-none">
-            <BreatheRive />
-          </div>
-          <div className={`relative ring-breathe ${overtime ? "timer-glow-overtime" : "timer-glow"}`}>
+        {/* Timer ring — centered and breathing */}
+        <div className={`relative mb-8 ring-breathe ${overtime ? "timer-glow-overtime" : "timer-glow"}`}>
           <TimerRing progress={overtime ? 1 : progress} size={240} stroke={10} overtime={overtime} />
           <div className="absolute inset-0 flex flex-col items-center justify-center">
             {overtime && (
@@ -859,7 +835,6 @@ export default function Home() {
             <span className="text-xs mt-1.5" style={{ color: V.muted }}>
               {overtime ? "keep going or finish" : running ? "focusing" : "paused"}
             </span>
-          </div>
           </div>
         </div>
 
