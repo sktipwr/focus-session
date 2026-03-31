@@ -170,17 +170,101 @@ export default function Home() {
   const [showAdd,setShowAdd]=useState(false);
   const [installPrompt,setInstallPrompt]=useState<Event|null>(null);
   const iRef=useRef<ReturnType<typeof setInterval>|null>(null);
+  // Wall-clock tracking: store when timer started and elapsed-at-pause
+  const timerStartRef=useRef<number>(0); // Date.now() when timer started/resumed
+  const elapsedAtPauseRef=useRef<number>(0); // elapsed seconds when paused
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const wakeLockRef=useRef<any>(null);
+  const notifiedRef=useRef(false); // prevent duplicate notifications
 
   const tasks=dayData.tasks, running=ts==="running", overtime=ts==="overtime";
   const uT=useCallback((fn:(t:Task[])=>Task[])=>{setDayData(p=>({...p,tasks:fn(p.tasks)}));},[]);
 
-  useEffect(()=>{setDayData(loadToday());setHistory(loadHistory());setMounted(true);if("serviceWorker"in navigator)navigator.serviceWorker.register("/sw.js").catch(()=>{});const h=(e:Event)=>{e.preventDefault();setInstallPrompt(e);};window.addEventListener("beforeinstallprompt",h);const at=()=>{const hr=new Date().getHours(),il=hr>=6&&hr<18;document.documentElement.classList.toggle("light",il);document.querySelector('meta[name="theme-color"]')?.setAttribute("content",il?"#faf8f2":"#0c0c0e");};at();const ti=setInterval(at,60000);return()=>{window.removeEventListener("beforeinstallprompt",h);clearInterval(ti);};},[]);
-  useEffect(()=>{if(!mounted)return;saveToday(dayData);if(dayData.tasks.some(t=>t.status==="done"))syncDaySummary(dayData.date,dayData.tasks.map(t=>({id:t.id,label:t.label,status:t.status,completedCount:t.completedCount,duration:t.duration})));},[dayData,mounted]);
-  const tsRef=useRef(ts); tsRef.current=ts;
-  useEffect(()=>{if(running&&activeIdx>=0){iRef.current=setInterval(()=>{uT(p=>{const n=[...p],t={...n[activeIdx]};t.elapsed+=1;if(t.elapsed>=t.duration&&tsRef.current!=="overtime")setTs("overtime");n[activeIdx]=t;return n;});},1000);}return()=>{if(iRef.current)clearInterval(iRef.current);};},[running,activeIdx,uT]);
+  // ── Request notification permission on mount ──
+  useEffect(()=>{
+    setDayData(loadToday());setHistory(loadHistory());setMounted(true);
+    if("serviceWorker"in navigator)navigator.serviceWorker.register("/sw.js").catch(()=>{});
+    // Request notification permission
+    if("Notification"in window&&Notification.permission==="default") Notification.requestPermission();
+    const h=(e:Event)=>{e.preventDefault();setInstallPrompt(e);};
+    window.addEventListener("beforeinstallprompt",h);
+    const at=()=>{const hr=new Date().getHours(),il=hr>=6&&hr<18;document.documentElement.classList.toggle("light",il);document.querySelector('meta[name="theme-color"]')?.setAttribute("content",il?"#faf8f2":"#0c0c0e");};
+    at();const ti=setInterval(at,60000);
+    return()=>{window.removeEventListener("beforeinstallprompt",h);clearInterval(ti);};
+  },[]);
 
-  const startTask=useCallback((i:number)=>{uT(p=>{const n=[...p];n[i]={...n[i],status:"active",elapsed:0};return n;});setActiveIdx(i);setTs("running");setTab("timer");},[uT]);
-  const pauseResume=useCallback(()=>{setTs(s=>s==="running"?"paused":s==="paused"?"running":s);},[]);
+  useEffect(()=>{if(!mounted)return;saveToday(dayData);if(dayData.tasks.some(t=>t.status==="done"))syncDaySummary(dayData.date,dayData.tasks.map(t=>({id:t.id,label:t.label,status:t.status,completedCount:t.completedCount,duration:t.duration})));},[dayData,mounted]);
+
+  // ── Wake Lock: keep screen on while timer is running ──
+  useEffect(()=>{
+    const acquire=async()=>{
+      if(running&&"wakeLock"in navigator){
+        try{ wakeLockRef.current=await navigator.wakeLock.request("screen"); }catch{}
+      }
+    };
+    acquire();
+    // Re-acquire on visibility change (wake lock releases when tab hidden)
+    const onVis=()=>{ if(document.visibilityState==="visible"&&running) acquire(); };
+    document.addEventListener("visibilitychange",onVis);
+    return()=>{
+      document.removeEventListener("visibilitychange",onVis);
+      if(wakeLockRef.current){try{wakeLockRef.current.release();}catch{} wakeLockRef.current=null;}
+    };
+  },[running]);
+
+  // ── Timer tick using wall clock ──
+  const tsRef=useRef(ts); tsRef.current=ts;
+  useEffect(()=>{
+    if(running&&activeIdx>=0){
+      // Record wall-clock start time
+      timerStartRef.current=Date.now();
+      notifiedRef.current=false;
+
+      iRef.current=setInterval(()=>{
+        // Compute elapsed from wall clock — survives background throttling
+        const wallElapsed=Math.floor((Date.now()-timerStartRef.current)/1000);
+        const totalElapsed=elapsedAtPauseRef.current+wallElapsed;
+
+        uT(p=>{
+          const n=[...p],t={...n[activeIdx]};
+          t.elapsed=totalElapsed;
+          if(t.elapsed>=t.duration&&tsRef.current!=="overtime"){
+            setTs("overtime");
+            // Send notification that timer is done
+            if(!notifiedRef.current&&"Notification"in window&&Notification.permission==="granted"){
+              notifiedRef.current=true;
+              new Notification("Focusum",{body:`${t.label} timer complete! You're in overtime.`,icon:"/icon-192.png",tag:"timer-done"});
+            }
+          }
+          n[activeIdx]=t;return n;
+        });
+      },1000);
+    }
+    return()=>{if(iRef.current)clearInterval(iRef.current);};
+  },[running,activeIdx,uT]);
+
+  const startTask=useCallback((i:number)=>{
+    elapsedAtPauseRef.current=0;timerStartRef.current=Date.now();notifiedRef.current=false;
+    uT(p=>{const n=[...p];n[i]={...n[i],status:"active",elapsed:0};return n;});
+    setActiveIdx(i);setTs("running");setTab("timer");
+  },[uT]);
+
+  const pauseResume=useCallback(()=>{
+    setTs(s=>{
+      if(s==="running"){
+        // Pausing: save current elapsed
+        const wallElapsed=Math.floor((Date.now()-timerStartRef.current)/1000);
+        elapsedAtPauseRef.current+=wallElapsed;
+        return"paused";
+      }
+      if(s==="paused"){
+        // Resuming: reset wall clock start
+        timerStartRef.current=Date.now();
+        return"running";
+      }
+      return s;
+    });
+  },[]);
   const finishTask=useCallback(()=>{const task=tasks[activeIdx];logSession({task_id:task.id,task_label:task.label,duration_planned:task.duration,duration_actual:task.elapsed,completed_at:new Date().toISOString(),date:dayData.date,was_overtime:task.elapsed>task.duration});uT(p=>{const n=[...p],t={...n[activeIdx]};t.status="done";t.completedCount+=1;n[activeIdx]=t;return n;});setTs("success");fireConfetti();},[activeIdx,tasks,dayData.date,uT]);
   const skipTask=useCallback(()=>{uT(p=>{const n=[...p];n[activeIdx]={...n[activeIdx],status:"skipped"};return n;});setTs("idle");setTab("home");},[activeIdx,uT]);
   const repeatTask=useCallback((i:number)=>{uT(p=>{const n=[...p];n[i]={...n[i],status:"pending",elapsed:0};return n;});},[uT]);
